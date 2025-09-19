@@ -978,8 +978,36 @@ func (ws *WebServer) handleARP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entries := ws.router.ARPTable.GetAllEntries()
+
+	// 转换为前端期望的格式
+	arpList := make([]map[string]interface{}, 0, len(entries))
+	for _, entry := range entries {
+		// 格式化IP地址
+		ipAddr := ""
+		if entry.IPAddress != nil {
+			ipAddr = entry.IPAddress.String()
+		}
+
+		// 格式化MAC地址
+		macAddr := ""
+		if entry.MACAddress != nil {
+			macAddr = entry.MACAddress.String()
+		}
+
+		// 格式化状态
+		status := entry.State.String()
+
+		arpEntry := map[string]interface{}{
+			"ip":        ipAddr,
+			"mac":       macAddr,
+			"interface": entry.Interface,
+			"status":    status,
+		}
+		arpList = append(arpList, arpEntry)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(entries)
+	_ = json.NewEncoder(w).Encode(arpList)
 }
 
 // handleFirewallRules 处理防火墙规则
