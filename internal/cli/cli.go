@@ -23,6 +23,9 @@ type CLI struct {
 	configManager *config.ConfigManager
 	staticManager *protocols.StaticRouteManager
 	ripManager    *protocols.RIPManager
+	ospfManager   *protocols.OSPFManager
+	bgpManager    *protocols.BGPManager
+	isisManager   *protocols.ISISManager
 	running       bool
 	exitChan      chan bool
 	rl            *readline.Instance
@@ -30,7 +33,15 @@ type CLI struct {
 }
 
 // NewCLI 创建CLI实例
-func NewCLI(r *router.Router, cm *config.ConfigManager, sm *protocols.StaticRouteManager, rm *protocols.RIPManager) *CLI {
+func NewCLI(
+	r *router.Router,
+	cm *config.ConfigManager,
+	sm *protocols.StaticRouteManager,
+	rm *protocols.RIPManager,
+	om *protocols.OSPFManager,
+	bm *protocols.BGPManager,
+	im *protocols.ISISManager,
+) *CLI {
 	// 获取用户主目录
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -44,6 +55,9 @@ func NewCLI(r *router.Router, cm *config.ConfigManager, sm *protocols.StaticRout
 		configManager: cm,
 		staticManager: sm,
 		ripManager:    rm,
+		ospfManager:   om,
+		bgpManager:    bm,
+		isisManager:   im,
 		running:       false,
 		exitChan:      make(chan bool, 1),
 		historyFile:   historyFile,
@@ -293,6 +307,12 @@ func (cli *CLI) processCommand(line string) {
 		cli.handleInterfaceCommand(args)
 	case "rip":
 		cli.handleRIPCommand(args)
+	case "ospf":
+		cli.handleOSPFCommand(args)
+	case "bgp":
+		cli.handleBGPCommand(args)
+	case "isis":
+		cli.handleISISCommand(args)
 	case "packet":
 		cli.handlePacketCommand(args)
 	case "save":
@@ -322,6 +342,15 @@ func (cli *CLI) showHelp() {
 	fmt.Println("  rip enable              - 启用RIP协议")
 	fmt.Println("  rip disable             - 禁用RIP协议")
 	fmt.Println("  rip show neighbors      - 显示RIP邻居")
+	fmt.Println("  ospf start              - 启动OSPF协议")
+	fmt.Println("  ospf stop               - 停止OSPF协议")
+	fmt.Println("  ospf status             - 显示OSPF状态")
+	fmt.Println("  bgp start               - 启动BGP协议")
+	fmt.Println("  bgp stop                - 停止BGP协议")
+	fmt.Println("  bgp status              - 显示BGP状态")
+	fmt.Println("  isis start              - 启动IS-IS协议")
+	fmt.Println("  isis stop               - 停止IS-IS协议")
+	fmt.Println("  isis status             - 显示IS-IS状态")
 	fmt.Println("  packet send <src> <dst> [data]      - 模拟发送数据包")
 	fmt.Println("  packet test <src> <dst>             - 测试路由路径")
 	fmt.Println("  packet stats                        - 显示数据包统计")
@@ -606,6 +635,21 @@ func (cli *CLI) createCompleter() readline.AutoCompleter {
 				readline.PcItem("neighbors"),
 			),
 		),
+		readline.PcItem("ospf",
+			readline.PcItem("start"),
+			readline.PcItem("stop"),
+			readline.PcItem("status"),
+		),
+		readline.PcItem("bgp",
+			readline.PcItem("start"),
+			readline.PcItem("stop"),
+			readline.PcItem("status"),
+		),
+		readline.PcItem("isis",
+			readline.PcItem("start"),
+			readline.PcItem("stop"),
+			readline.PcItem("status"),
+		),
 		readline.PcItem("packet",
 			readline.PcItem("send"),
 			readline.PcItem("test"),
@@ -620,4 +664,115 @@ func (cli *CLI) createCompleter() readline.AutoCompleter {
 		readline.PcItem("exit"),
 		readline.PcItem("quit"),
 	)
+}
+
+// handleOSPFCommand 处理OSPF命令
+func (cli *CLI) handleOSPFCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Println("用法: ospf <start|stop|status>")
+		return
+	}
+
+	switch args[0] {
+	case "start":
+		if cli.ospfManager != nil {
+			if err := cli.ospfManager.Start(); err != nil {
+				fmt.Printf("启动OSPF失败: %v\n", err)
+			} else {
+				fmt.Println("OSPF已启动")
+			}
+		} else {
+			fmt.Println("OSPF管理器未初始化")
+		}
+	case "stop":
+		if cli.ospfManager != nil {
+			cli.ospfManager.Stop()
+			fmt.Println("OSPF已停止")
+		} else {
+			fmt.Println("OSPF管理器未初始化")
+		}
+	case "status":
+		if cli.ospfManager != nil {
+			fmt.Println("OSPF状态: 运行中")
+		} else {
+			fmt.Println("OSPF状态: 未启动")
+		}
+	default:
+		fmt.Printf("未知的OSPF命令: %s\n", args[0])
+		fmt.Println("可用命令: start, stop, status")
+	}
+}
+
+// handleBGPCommand 处理BGP命令
+func (cli *CLI) handleBGPCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Println("用法: bgp <start|stop|status>")
+		return
+	}
+
+	switch args[0] {
+	case "start":
+		if cli.bgpManager != nil {
+			if err := cli.bgpManager.Start(); err != nil {
+				fmt.Printf("启动BGP失败: %v\n", err)
+			} else {
+				fmt.Println("BGP已启动")
+			}
+		} else {
+			fmt.Println("BGP管理器未初始化")
+		}
+	case "stop":
+		if cli.bgpManager != nil {
+			cli.bgpManager.Stop()
+			fmt.Println("BGP已停止")
+		} else {
+			fmt.Println("BGP管理器未初始化")
+		}
+	case "status":
+		if cli.bgpManager != nil {
+			fmt.Println("BGP状态: 运行中")
+		} else {
+			fmt.Println("BGP状态: 未启动")
+		}
+	default:
+		fmt.Printf("未知的BGP命令: %s\n", args[0])
+		fmt.Println("可用命令: start, stop, status")
+	}
+}
+
+// handleISISCommand 处理IS-IS命令
+func (cli *CLI) handleISISCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Println("用法: isis <start|stop|status>")
+		return
+	}
+
+	switch args[0] {
+	case "start":
+		if cli.isisManager != nil {
+			if err := cli.isisManager.Start(); err != nil {
+				fmt.Printf("启动IS-IS失败: %v\n", err)
+			} else {
+				fmt.Println("IS-IS已启动")
+			}
+		} else {
+			fmt.Println("IS-IS管理器未初始化")
+		}
+	case "stop":
+		if cli.isisManager != nil {
+			cli.isisManager.Stop()
+			fmt.Println("IS-IS已停止")
+		} else {
+			fmt.Println("IS-IS管理器未初始化")
+		}
+	case "status":
+		if cli.isisManager != nil {
+			fmt.Println("IS-IS状态: 运行中")
+		} else {
+			fmt.Println("IS-IS状态: 未启动")
+		}
+	default:
+		fmt.Printf("未知的IS-IS命令: %s\n", args[0])
+		fmt.Println("可用命令: start, stop, status")
+	}
 }

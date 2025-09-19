@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"router-os/internal/cli"
@@ -14,6 +16,25 @@ import (
 	"router-os/internal/protocols"
 	"router-os/internal/router"
 )
+
+func parseSystemID(systemIDStr string) []byte {
+	// 解析系统ID字符串为字节数组
+	// 格式: "1234.5678.9012" -> [0x12, 0x34, 0x56, 0x78, 0x90, 0x12]
+	parts := strings.Split(systemIDStr, ".")
+	if len(parts) != 3 {
+		return []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x01} // 默认系统ID
+	}
+
+	systemID := make([]byte, 6)
+	for i, part := range parts {
+		if val, err := strconv.ParseUint(part, 16, 16); err == nil {
+			systemID[i*2] = byte(val >> 8)
+			systemID[i*2+1] = byte(val & 0xFF)
+		}
+	}
+
+	return systemID
+}
 
 func main() {
 	fmt.Println("Router OS 启动中...")
@@ -43,6 +64,34 @@ func main() {
 	// 创建协议管理器
 	staticManager := protocols.NewStaticRouteManager(r.GetRoutingTable())
 	ripManager := protocols.NewRIPManager(r.GetRoutingTable(), r.GetInterfaceManager())
+
+	// 创建新协议管理器（始终创建，以便CLI可以使用）
+	ospfManager := protocols.NewOSPFManager(
+		r.GetRoutingTable(),
+		r.GetInterfaceManager(),
+	)
+
+	// 使用默认AS号65001，如果配置中有则使用配置的值
+	localAS := uint16(65001)
+	if cfg.BGP.LocalAS != 0 {
+		localAS = uint16(cfg.BGP.LocalAS)
+	}
+	bgpManager := protocols.NewBGPManager(
+		localAS,
+		r.GetRoutingTable(),
+		r.GetInterfaceManager(),
+	)
+
+	// 使用默认系统ID，如果配置中有则使用配置的值
+	systemID := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}
+	if cfg.ISIS.SystemID != "" {
+		systemID = parseSystemID(cfg.ISIS.SystemID)
+	}
+	isisManager := protocols.NewISISManager(
+		systemID,
+		r.GetRoutingTable(),
+		logger,
+	)
 
 	// 创建监控器
 	monitor := monitoring.NewMonitor(r.GetRoutingTable(), r.GetInterfaceManager())
@@ -77,11 +126,36 @@ func main() {
 		}
 	}
 
+	// 启动新协议（根据配置决定是否自动启动）
+	if cfg.OSPF.Enabled {
+		if err := ospfManager.Start(); err != nil {
+			logger.Error("Failed to start OSPF manager", "error", err)
+		} else {
+			logger.Info("OSPF manager started successfully")
+		}
+	}
+
+	if cfg.BGP.Enabled {
+		if err := bgpManager.Start(); err != nil {
+			logger.Error("Failed to start BGP manager", "error", err)
+		} else {
+			logger.Info("BGP manager started successfully")
+		}
+	}
+
+	if cfg.ISIS.Enabled {
+		if err := isisManager.Start(); err != nil {
+			logger.Error("Failed to start IS-IS manager", "error", err)
+		} else {
+			logger.Info("IS-IS manager started successfully")
+		}
+	}
+
 	logger.Info("Router OS 已启动")
 	fmt.Println("Router OS 已启动")
 
 	// 创建并启动CLI
-	cliInterface := cli.NewCLI(r, configManager, staticManager, ripManager)
+	cliInterface := cli.NewCLI(r, configManager, staticManager, ripManager, ospfManager, bgpManager, isisManager)
 	go cliInterface.Start()
 
 	// 等待中断信号或CLI退出信号
@@ -105,6 +179,22 @@ func main() {
 	if cfg.RIP.Enabled {
 		ripManager.Stop()
 		logger.Info("RIP协议已停止")
+	}
+
+	// 停止新协议
+	if ospfManager != nil {
+		ospfManager.Stop()
+		logger.Info("OSPF manager stopped")
+	}
+
+	if bgpManager != nil {
+		bgpManager.Stop()
+		logger.Info("BGP manager stopped")
+	}
+
+	if isisManager != nil {
+		isisManager.Stop()
+		logger.Info("IS-IS manager stopped")
 	}
 
 	// 停止路由器

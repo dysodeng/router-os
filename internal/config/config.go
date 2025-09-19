@@ -34,12 +34,79 @@ type RIPConfig struct {
 	Timeout     int      `json:"timeout"`      // 秒
 }
 
+// OSPFConfig OSPF协议配置
+type OSPFConfig struct {
+	Enabled    bool                  `json:"enabled"`
+	RouterID   string                `json:"router_id"`
+	Areas      []OSPFAreaConfig      `json:"areas"`
+	Interfaces []OSPFInterfaceConfig `json:"interfaces"`
+}
+
+// OSPFAreaConfig OSPF区域配置
+type OSPFAreaConfig struct {
+	AreaID string `json:"area_id"`
+	Type   string `json:"type"` // normal, stub, nssa
+}
+
+// OSPFInterfaceConfig OSPF接口配置
+type OSPFInterfaceConfig struct {
+	Name          string `json:"name"`
+	AreaID        string `json:"area_id"`
+	Cost          int    `json:"cost"`
+	HelloInterval int    `json:"hello_interval"`
+	DeadInterval  int    `json:"dead_interval"`
+	Priority      int    `json:"priority"`
+}
+
+// BGPConfig BGP协议配置
+type BGPConfig struct {
+	Enabled  bool            `json:"enabled"`
+	LocalAS  int             `json:"local_as"`
+	RouterID string          `json:"router_id"`
+	Peers    []BGPPeerConfig `json:"peers"`
+}
+
+// BGPPeerConfig BGP邻居配置
+type BGPPeerConfig struct {
+	Address   string `json:"address"`
+	RemoteAS  int    `json:"remote_as"`
+	HoldTime  int    `json:"hold_time"`
+	KeepAlive int    `json:"keep_alive"`
+	Password  string `json:"password,omitempty"`
+}
+
+// ISISConfig IS-IS协议配置
+type ISISConfig struct {
+	Enabled    bool                  `json:"enabled"`
+	SystemID   string                `json:"system_id"`
+	Areas      []ISISAreaConfig      `json:"areas"`
+	Interfaces []ISISInterfaceConfig `json:"interfaces"`
+}
+
+// ISISAreaConfig IS-IS区域配置
+type ISISAreaConfig struct {
+	AreaID string `json:"area_id"`
+	Level  int    `json:"level"` // 1 or 2
+}
+
+// ISISInterfaceConfig IS-IS接口配置
+type ISISInterfaceConfig struct {
+	Name          string `json:"name"`
+	AreaID        string `json:"area_id"`
+	Priority      int    `json:"priority"`
+	HelloInterval int    `json:"hello_interval"`
+	HoldTime      int    `json:"hold_time"`
+}
+
 // RouterConfig 路由器配置
 type RouterConfig struct {
 	Hostname     string              `json:"hostname"`
 	Interfaces   []InterfaceConfig   `json:"interfaces"`
 	StaticRoutes []StaticRouteConfig `json:"static_routes"`
 	RIP          RIPConfig           `json:"rip"`
+	OSPF         OSPFConfig          `json:"ospf"`
+	BGP          BGPConfig           `json:"bgp"`
+	ISIS         ISISConfig          `json:"isis"`
 	LogLevel     string              `json:"log_level"`
 	LogFile      string              `json:"log_file"`
 }
@@ -78,6 +145,24 @@ func getDefaultConfig() *RouterConfig {
 			Interfaces:  []string{},
 			UpdateTimer: 30,
 			Timeout:     180,
+		},
+		OSPF: OSPFConfig{
+			Enabled:    false,
+			RouterID:   "1.1.1.1",
+			Areas:      []OSPFAreaConfig{},
+			Interfaces: []OSPFInterfaceConfig{},
+		},
+		BGP: BGPConfig{
+			Enabled:  false,
+			LocalAS:  65001,
+			RouterID: "1.1.1.1",
+			Peers:    []BGPPeerConfig{},
+		},
+		ISIS: ISISConfig{
+			Enabled:    false,
+			SystemID:   "1921.6800.1001",
+			Areas:      []ISISAreaConfig{},
+			Interfaces: []ISISInterfaceConfig{},
 		},
 		LogLevel: "info",
 		LogFile:  "/var/log/router-os.log",
