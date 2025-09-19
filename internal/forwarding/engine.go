@@ -852,7 +852,7 @@ func (fe *Engine) isPortListening(port uint16, protocol string) bool {
 			return false
 		}
 		conn, err = net.DialUDP("udp", nil, udpAddr)
-		if err == nil && conn != nil {
+		if err == nil {
 			// 发送一个小的测试数据包
 			_, writeErr := conn.Write([]byte{0})
 			_ = conn.Close()
@@ -1459,67 +1459,6 @@ func (fe *Engine) buildFragmentIPHeader(fragment *IPPacket) []byte {
 	checksum := fe.calculateIPChecksum(header)
 	header[10] = byte(checksum >> 8)
 	header[11] = byte(checksum & 0xFF)
-
-	return header
-}
-
-// buildIPHeader 构建IP头部
-func (fe *Engine) buildIPHeader(pkt *IPPacket) []byte {
-	header := make([]byte, 20) // 标准IP头部20字节
-
-	// 版本(4) + 头部长度(4) = 1字节
-	header[0] = 0x45 // IPv4, 20字节头部
-
-	// 服务类型
-	header[1] = 0x00
-
-	// 总长度（头部 + 数据）
-	totalLen := 20 + len(pkt.Data)
-	header[2] = byte(totalLen >> 8)
-	header[3] = byte(totalLen)
-
-	// 标识符
-	header[4] = byte(pkt.FragmentID >> 8)
-	header[5] = byte(pkt.FragmentID)
-
-	// 标志位 + 分片偏移
-	flags := uint16(0)
-	if pkt.DontFragment {
-		flags |= 0x4000 // DF位
-	}
-	if pkt.MoreFragments {
-		flags |= 0x2000 // MF位
-	}
-	flagsAndOffset := flags | uint16(pkt.FragmentOffset)
-	header[6] = byte(flagsAndOffset >> 8)
-	header[7] = byte(flagsAndOffset)
-
-	// TTL
-	header[8] = byte(pkt.TTL)
-
-	// 协议
-	header[9] = byte(pkt.Protocol)
-
-	// 校验和（先设为0）
-	header[10] = 0
-	header[11] = 0
-
-	// 源IP地址
-	srcIP := pkt.Source.To4()
-	if srcIP != nil {
-		copy(header[12:16], srcIP)
-	}
-
-	// 目标IP地址
-	dstIP := pkt.Destination.To4()
-	if dstIP != nil {
-		copy(header[16:20], dstIP)
-	}
-
-	// 计算校验和
-	checksum := fe.calculateIPChecksum(header)
-	header[10] = byte(checksum >> 8)
-	header[11] = byte(checksum)
 
 	return header
 }
