@@ -982,7 +982,7 @@ func (bm *BGPManager) processPeerStateTransition(peer *BGPPeer) {
 	defer peer.mu.Unlock()
 
 	now := time.Now()
-
+	
 	switch peer.State {
 	case BGPIdle:
 		// 空闲状态，尝试连接
@@ -990,28 +990,28 @@ func (bm *BGPManager) processPeerStateTransition(peer *BGPPeer) {
 			bm.logger.Info("尝试连接BGP邻居: %s", peer.Address.String())
 			go bm.connectToPeer(peer)
 		}
-
+		
 	case BGPConnect:
 		// 连接状态，等待连接建立
 		// 这里应该检查TCP连接状态
-
+		
 	case BGPActive:
 		// 活跃状态，等待连接
-
+		
 	case BGPOpenSent:
 		// 已发送Open消息，等待回复
 		if now.Sub(peer.LastUpdate) > peer.HoldTime {
 			bm.logger.Warn("BGP邻居 %s Open消息超时", peer.Address.String())
 			peer.State = BGPIdle
 		}
-
+		
 	case BGPOpenConfirm:
 		// Open确认状态，等待Keepalive
 		if now.Sub(peer.LastKeepalive) > peer.HoldTime {
 			bm.logger.Warn("BGP邻居 %s Keepalive超时", peer.Address.String())
 			peer.State = BGPIdle
 		}
-
+		
 	case BGPEstablished:
 		// 已建立状态，检查Keepalive超时
 		if now.Sub(peer.LastKeepalive) > peer.HoldTime {
@@ -1089,10 +1089,10 @@ func (bm *BGPManager) processPolicies() {
 
 	// 应用入站策略
 	bm.applyInboundPolicies()
-
+	
 	// 应用出站策略
 	bm.applyOutboundPolicies()
-
+	
 	// 重新运行路由选择
 	bm.runRouteSelection()
 }

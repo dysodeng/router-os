@@ -22,13 +22,13 @@ import (
 type WebServer struct {
 	// server HTTP服务器
 	server *http.Server
-	
+
 	// router 路由器实例
 	router *RouterInstance
-	
+
 	// running 运行状态
 	running bool
-	
+
 	// config 配置
 	config WebConfig
 }
@@ -37,22 +37,22 @@ type WebServer struct {
 type WebConfig struct {
 	// Port 监听端口
 	Port int `json:"port"`
-	
+
 	// Host 监听地址
 	Host string `json:"host"`
-	
+
 	// Username 管理员用户名
 	Username string `json:"username"`
-	
+
 	// Password 管理员密码
 	Password string `json:"password"`
-	
+
 	// EnableHTTPS 启用HTTPS
 	EnableHTTPS bool `json:"enable_https"`
-	
+
 	// CertFile 证书文件
 	CertFile string `json:"cert_file"`
-	
+
 	// KeyFile 私钥文件
 	KeyFile string `json:"key_file"`
 }
@@ -61,28 +61,28 @@ type WebConfig struct {
 type RouterInstance struct {
 	// InterfaceManager 接口管理器
 	InterfaceManager *interfaces.Manager
-	
+
 	// RoutingTable 路由表
 	RoutingTable routing.RoutingTableInterface
-	
+
 	// ARPTable ARP表
 	ARPTable *arp.ARPTable
-	
+
 	// Forwarder 转发器
-	Forwarder *forwarding.ForwardingEngine
-	
+	Forwarder *forwarding.Engine
+
 	// NetConfig 网络配置
 	NetConfig *netconfig.NetworkConfigurator
-	
+
 	// Firewall 防火墙
 	Firewall *firewall.Firewall
-	
+
 	// QoS QoS引擎
 	QoS *qos.QoSEngine
-	
+
 	// DHCP DHCP服务器
 	DHCP *dhcp.DHCPServer
-	
+
 	// VPN VPN服务器
 	VPN *vpn.VPNServer
 }
@@ -98,52 +98,52 @@ func NewWebServer(config WebConfig, router *RouterInstance) *WebServer {
 // Start 启动Web服务器
 func (ws *WebServer) Start() error {
 	mux := http.NewServeMux()
-	
+
 	// 静态文件服务
 	mux.HandleFunc("/", ws.handleIndex)
 	mux.HandleFunc("/static/", ws.handleStatic)
-	
+
 	// API路由
 	mux.HandleFunc("/api/login", ws.handleLogin)
 	mux.HandleFunc("/api/logout", ws.handleLogout)
 	mux.HandleFunc("/api/status", ws.requireAuth(ws.handleStatus))
-	
+
 	// 接口管理API
 	mux.HandleFunc("/api/interfaces", ws.requireAuth(ws.handleInterfaces))
 	mux.HandleFunc("/api/interfaces/", ws.requireAuth(ws.handleInterfaceDetail))
-	
+
 	// 路由管理API
 	mux.HandleFunc("/api/routes", ws.requireAuth(ws.handleRoutes))
-	
+
 	// ARP表API
 	mux.HandleFunc("/api/arp", ws.requireAuth(ws.handleARP))
-	
+
 	// 防火墙API
 	mux.HandleFunc("/api/firewall/rules", ws.requireAuth(ws.handleFirewallRules))
-	
+
 	// DHCP API
 	mux.HandleFunc("/api/dhcp/config", ws.requireAuth(ws.handleDHCPConfig))
 	mux.HandleFunc("/api/dhcp/leases", ws.requireAuth(ws.handleDHCPLeases))
-	
+
 	// VPN API
 	mux.HandleFunc("/api/vpn/config", ws.requireAuth(ws.handleVPNConfig))
 	mux.HandleFunc("/api/vpn/clients", ws.requireAuth(ws.handleVPNClients))
-	
+
 	// QoS API
 	mux.HandleFunc("/api/qos/config", ws.requireAuth(ws.handleQoSConfig))
-	
+
 	addr := fmt.Sprintf("%s:%d", ws.config.Host, ws.config.Port)
 	ws.server = &http.Server{
 		Addr:    addr,
 		Handler: mux,
 	}
-	
+
 	ws.running = true
-	
+
 	if ws.config.EnableHTTPS {
 		return ws.server.ListenAndServeTLS(ws.config.CertFile, ws.config.KeyFile)
 	}
-	
+
 	return ws.server.ListenAndServe()
 }
 
@@ -162,7 +162,7 @@ func (ws *WebServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	
+
 	html := `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -714,7 +714,7 @@ func (ws *WebServer) handleIndex(w http.ResponseWriter, r *http.Request) {
     </script>
 </body>
 </html>`
-	
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
 }
@@ -731,24 +731,24 @@ func (ws *WebServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var loginReq struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	
+
 	if loginReq.Username == ws.config.Username && loginReq.Password == ws.config.Password {
 		token := fmt.Sprintf("token_%d", time.Now().Unix())
-		
+
 		response := map[string]string{
 			"token": token,
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	} else {
@@ -769,14 +769,14 @@ func (ws *WebServer) requireAuth(handler http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		
+
 		// 简单的token验证
 		token := strings.TrimPrefix(auth, "Bearer ")
 		if token == "" {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		
+
 		handler(w, r)
 	}
 }
@@ -787,15 +787,15 @@ func (ws *WebServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	routes := ws.router.RoutingTable.GetAllRoutes()
 	arpEntries := ws.router.ARPTable.GetAllEntries()
 	leases := ws.router.DHCP.GetLeases()
-	
+
 	status := map[string]interface{}{
-		"interfaces":   len(interfaces),
-		"routes":       len(routes),
-		"arp_entries":  len(arpEntries),
-		"dhcp_leases":  len(leases),
-		"uptime":       time.Since(time.Now()).Seconds(),
+		"interfaces":  len(interfaces),
+		"routes":      len(routes),
+		"arp_entries": len(arpEntries),
+		"dhcp_leases": len(leases),
+		"uptime":      time.Since(time.Now()).Seconds(),
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
 }
@@ -807,7 +807,7 @@ func (ws *WebServer) handleInterfaces(w http.ResponseWriter, r *http.Request) {
 		interfaces := ws.router.InterfaceManager.GetAllInterfaces()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(interfaces)
-		
+
 	case http.MethodPost:
 		// 添加接口配置
 		var config struct {
@@ -815,20 +815,20 @@ func (ws *WebServer) handleInterfaces(w http.ResponseWriter, r *http.Request) {
 			IP   string `json:"ip"`
 			Mask string `json:"mask"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
-		
+
 		// 配置接口IP
 		if err := ws.router.NetConfig.SetInterfaceIP(config.Name, config.IP, config.Mask); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
-		
+
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -839,12 +839,12 @@ func (ws *WebServer) handleInterfaceDetail(w http.ResponseWriter, r *http.Reques
 	// 从URL路径提取接口名
 	path := strings.TrimPrefix(r.URL.Path, "/api/interfaces/")
 	interfaceName := strings.Split(path, "/")[0]
-	
+
 	if interfaceName == "" {
 		http.Error(w, "Interface name required", http.StatusBadRequest)
 		return
 	}
-	
+
 	switch r.Method {
 	case http.MethodGet:
 		iface, err := ws.router.InterfaceManager.GetInterface(interfaceName)
@@ -852,10 +852,10 @@ func (ws *WebServer) handleInterfaceDetail(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "Interface not found", http.StatusNotFound)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(iface)
-		
+
 	case http.MethodPut:
 		// 更新接口配置
 		var config struct {
@@ -863,12 +863,12 @@ func (ws *WebServer) handleInterfaceDetail(w http.ResponseWriter, r *http.Reques
 			Mask   string `json:"mask"`
 			Enable bool   `json:"enable"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
-		
+
 		if config.IP != "" {
 			mask := config.Mask
 			if mask == "" {
@@ -879,15 +879,15 @@ func (ws *WebServer) handleInterfaceDetail(w http.ResponseWriter, r *http.Reques
 				return
 			}
 		}
-		
+
 		if config.Enable {
 			ws.router.InterfaceManager.SetInterfaceStatus(interfaceName, interfaces.InterfaceStatusUp)
 		} else {
 			ws.router.InterfaceManager.SetInterfaceStatus(interfaceName, interfaces.InterfaceStatusDown)
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
-		
+
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -900,7 +900,7 @@ func (ws *WebServer) handleRoutes(w http.ResponseWriter, r *http.Request) {
 		routes := ws.router.RoutingTable.GetAllRoutes()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(routes)
-		
+
 	case http.MethodPost:
 		var route struct {
 			Destination string `json:"destination"`
@@ -908,24 +908,24 @@ func (ws *WebServer) handleRoutes(w http.ResponseWriter, r *http.Request) {
 			Interface   string `json:"interface"`
 			Metric      int    `json:"metric"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&route); err != nil {
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
-		
+
 		if route.Metric == 0 {
 			route.Metric = 1 // 默认度量值
 		}
-		
+
 		// 添加路由
 		if err := ws.router.NetConfig.AddRoute(route.Destination, route.Gateway, route.Interface, route.Metric); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusCreated)
-		
+
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -937,7 +937,7 @@ func (ws *WebServer) handleARP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	entries := ws.router.ARPTable.GetAllEntries()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
@@ -954,20 +954,20 @@ func (ws *WebServer) handleFirewallRules(w http.ResponseWriter, r *http.Request)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(rules)
-		
+
 	case http.MethodPost:
 		var rule firewall.Rule
 		if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
-		
+
 		if err := ws.router.Firewall.AddRule("filter", rule); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
-		
+
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -979,7 +979,7 @@ func (ws *WebServer) handleDHCPConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	config := ws.router.DHCP.GetConfig()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(config)
@@ -991,7 +991,7 @@ func (ws *WebServer) handleDHCPLeases(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	leases := ws.router.DHCP.GetLeases()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(leases)
@@ -1003,7 +1003,7 @@ func (ws *WebServer) handleVPNConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	config := ws.router.VPN.GetConfig()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(config)
@@ -1015,7 +1015,7 @@ func (ws *WebServer) handleVPNClients(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	clients := ws.router.VPN.GetConnectedClients()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(clients)
@@ -1027,7 +1027,7 @@ func (ws *WebServer) handleQoSConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	config := ws.router.QoS.GetConfig()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(config)
