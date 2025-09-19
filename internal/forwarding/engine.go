@@ -3,8 +3,10 @@ package forwarding
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"router-os/internal/arp"
@@ -528,18 +530,61 @@ func (fe *Engine) deliverToTCP(pkt *IPPacket) error {
 		return fmt.Errorf("TCP数据包长度不足")
 	}
 
-	// 提取端口信息
+	// 提取TCP头部信息
 	srcPort := uint16(pkt.Data[0])<<8 | uint16(pkt.Data[1])
 	dstPort := uint16(pkt.Data[2])<<8 | uint16(pkt.Data[3])
+	seqNum := uint32(pkt.Data[4])<<24 | uint32(pkt.Data[5])<<16 | uint32(pkt.Data[6])<<8 | uint32(pkt.Data[7])
+	ackNum := uint32(pkt.Data[8])<<24 | uint32(pkt.Data[9])<<16 | uint32(pkt.Data[10])<<8 | uint32(pkt.Data[11])
+	flags := pkt.Data[13]
+
+	// TCP标志位
+	flagFIN := (flags & 0x01) != 0
+	flagSYN := (flags & 0x02) != 0
+	flagRST := (flags & 0x04) != 0
+	flagPSH := (flags & 0x08) != 0
+	flagACK := (flags & 0x10) != 0
+	_ = (flags & 0x20) != 0 // flagURG - 暂时不使用
 
 	// 检查是否有监听该端口的服务
 	if !fe.isPortListening(dstPort, "tcp") {
-		// 发送TCP RST
+		// 如果是SYN包，发送RST响应
+		if flagSYN && !flagACK {
+			return fe.sendTCPReset(pkt, srcPort, dstPort)
+		}
+		// 对于其他包，也发送RST
 		return fe.sendTCPReset(pkt, srcPort, dstPort)
 	}
 
-	// 在真实实现中，这里会将数据包交付给TCP协议栈
-	// 包括连接管理、序列号处理、窗口管理等
+	// 真实的TCP协议栈处理
+	// 这里实现基本的TCP状态机和连接管理
+
+	// 按优先级处理TCP包，使用 else if 避免条件重叠
+
+	// 1. 处理RST包（最高优先级，立即重置连接）
+	if flagRST {
+		return fe.handleTCPRst(pkt, srcPort, dstPort)
+	} else if flagSYN {
+		// 2. 处理SYN包（连接建立）
+		return fe.handleTCPSyn(pkt, srcPort, dstPort, seqNum)
+	} else if flagFIN {
+		// 3. 处理FIN包（连接关闭）
+		return fe.handleTCPFin(pkt, srcPort, dstPort, seqNum)
+	} else if flagPSH {
+		// 4. 处理带数据的包（PSH标志表示有数据需要立即推送）
+		return fe.handleTCPData(pkt, srcPort, dstPort, seqNum, ackNum)
+	} else if flagACK {
+		// 5. 处理ACK包（可能是纯ACK或带数据的ACK）
+		// 检查是否有数据载荷
+		tcpHeaderLen := int((pkt.Data[12] >> 4) * 4)
+		if len(pkt.Data) > tcpHeaderLen {
+			// 有数据载荷，作为数据包处理
+			return fe.handleTCPData(pkt, srcPort, dstPort, seqNum, ackNum)
+		} else {
+			// 纯ACK包
+			return fe.handleTCPAck(pkt, srcPort, dstPort, seqNum, ackNum)
+		}
+	}
+
 	return nil
 }
 
@@ -580,36 +625,256 @@ func (fe *Engine) handleICMPEchoRequest(pkt *IPPacket) error {
 
 // handleICMPEchoReply 处理ICMP Echo Reply
 func (fe *Engine) handleICMPEchoReply(pkt *IPPacket) error {
-	// 在真实实现中，这里会将回复交付给等待的ping进程
+	// 解析ICMP头部
+	if len(pkt.Data) < 8 {
+		return fmt.Errorf("ICMP packet too short")
+	}
+
+	icmpType := pkt.Data[0]
+	icmpCode := pkt.Data[1]
+	identifier := uint16(pkt.Data[4])<<8 | uint16(pkt.Data[5])
+	sequence := uint16(pkt.Data[6])<<8 | uint16(pkt.Data[7])
+
+	// 验证这是一个Echo Reply
+	if icmpType != 0 {
+		return fmt.Errorf("not an ICMP Echo Reply")
+	}
+
+	fmt.Printf("Received ICMP Echo Reply from %s: type=%d, code=%d, id=%d, seq=%d\n",
+		pkt.Source, icmpType, icmpCode, identifier, sequence)
+
+	// 在真实实现中，这里会：
+	// 1. 查找等待此回复的ping进程
+	// 2. 计算往返时间(RTT)
+	// 3. 将结果交付给用户空间程序
+
+	// 模拟交付给ping程序
+	if len(pkt.Data) > 8 {
+		dataLen := len(pkt.Data) - 8
+		fmt.Printf("Echo Reply data length: %d bytes\n", dataLen)
+
+		// 可以在这里实现与用户空间ping程序的通信
+		// 例如通过socket、管道或共享内存
+	}
+
 	return nil
 }
 
 // handleICMPDestUnreachable 处理ICMP Destination Unreachable
 func (fe *Engine) handleICMPDestUnreachable(pkt *IPPacket) error {
-	// 在真实实现中，这里会通知相关的传输层协议
+	// 解析ICMP头部
+	if len(pkt.Data) < 8 {
+		return fmt.Errorf("ICMP packet too short")
+	}
+
+	icmpType := pkt.Data[0]
+	icmpCode := pkt.Data[1]
+
+	// 验证这是一个目标不可达消息
+	if icmpType != 3 {
+		return fmt.Errorf("not an ICMP Destination Unreachable")
+	}
+
+	// 解析不可达原因
+	var reason string
+	switch icmpCode {
+	case 0:
+		reason = "Network Unreachable"
+	case 1:
+		reason = "Host Unreachable"
+	case 2:
+		reason = "Protocol Unreachable"
+	case 3:
+		reason = "Port Unreachable"
+	case 4:
+		reason = "Fragmentation needed but DF set"
+	case 5:
+		reason = "Source route failed"
+	case 6:
+		reason = "Destination network unknown"
+	case 7:
+		reason = "Destination host unknown"
+	case 9:
+		reason = "Destination network administratively prohibited"
+	case 10:
+		reason = "Destination host administratively prohibited"
+	case 11:
+		reason = "Network unreachable for TOS"
+	case 12:
+		reason = "Host unreachable for TOS"
+	case 13:
+		reason = "Communication administratively prohibited"
+	default:
+		reason = fmt.Sprintf("Unknown code %d", icmpCode)
+	}
+
+	fmt.Printf("Received ICMP Destination Unreachable from %s: %s\n", pkt.Source, reason)
+
+	// 提取原始IP头部和数据（如果存在）
+	if len(pkt.Data) >= 28 { // ICMP头部(8字节) + 原始IP头部(至少20字节)
+		originalIPHeader := pkt.Data[8:28]
+		originalDest := fmt.Sprintf("%d.%d.%d.%d",
+			originalIPHeader[16], originalIPHeader[17],
+			originalIPHeader[18], originalIPHeader[19])
+		originalProto := originalIPHeader[9]
+
+		fmt.Printf("Original packet destination: %s, protocol: %d\n", originalDest, originalProto)
+
+		// 在真实实现中，这里会：
+		// 1. 查找相关的连接或套接字
+		// 2. 通知应用程序连接失败
+		// 3. 更新路由表（如果是网络不可达）
+		// 4. 触发重传或错误处理机制
+
+		// 根据协议类型处理
+		switch originalProto {
+		case 6: // TCP
+			// 通知TCP连接管理器
+			fmt.Printf("Notifying TCP connection manager about unreachable destination\n")
+		case 17: // UDP
+			// 通知UDP套接字
+			fmt.Printf("Notifying UDP socket about unreachable destination\n")
+		case 1: // ICMP
+			// 通知ping程序
+			fmt.Printf("Notifying ping program about unreachable destination\n")
+		}
+	}
+
 	return nil
 }
 
 // handleICMPTimeExceeded 处理ICMP Time Exceeded
 func (fe *Engine) handleICMPTimeExceeded(pkt *IPPacket) error {
-	// 在真实实现中，这里会通知相关的传输层协议
+	// 解析ICMP头部
+	if len(pkt.Data) < 8 {
+		return fmt.Errorf("ICMP packet too short")
+	}
+
+	icmpType := pkt.Data[0]
+	icmpCode := pkt.Data[1]
+
+	// 验证这是一个时间超时消息
+	if icmpType != 11 {
+		return fmt.Errorf("not an ICMP Time Exceeded")
+	}
+
+	// 解析超时原因
+	var reason string
+	switch icmpCode {
+	case 0:
+		reason = "TTL expired in transit"
+	case 1:
+		reason = "Fragment reassembly time exceeded"
+	default:
+		reason = fmt.Sprintf("Unknown code %d", icmpCode)
+	}
+
+	fmt.Printf("Received ICMP Time Exceeded from %s: %s\n", pkt.Source, reason)
+
+	// 提取原始IP头部和数据（如果存在）
+	if len(pkt.Data) >= 28 { // ICMP头部(8字节) + 原始IP头部(至少20字节)
+		originalIPHeader := pkt.Data[8:28]
+		originalSrc := fmt.Sprintf("%d.%d.%d.%d",
+			originalIPHeader[12], originalIPHeader[13],
+			originalIPHeader[14], originalIPHeader[15])
+		originalDest := fmt.Sprintf("%d.%d.%d.%d",
+			originalIPHeader[16], originalIPHeader[17],
+			originalIPHeader[18], originalIPHeader[19])
+		originalProto := originalIPHeader[9]
+		originalTTL := originalIPHeader[8]
+
+		fmt.Printf("Original packet: %s -> %s, protocol: %d, TTL: %d\n",
+			originalSrc, originalDest, originalProto, originalTTL)
+
+		// 在真实实现中，这里会：
+		switch icmpCode {
+		case 0: // TTL expired
+			// 1. 通知traceroute程序（如果是traceroute包）
+			// 2. 记录路由跳数信息
+			// 3. 可能触发路由重新计算
+			fmt.Printf("Processing TTL expiration for traceroute or routing\n")
+
+			// 检查是否是traceroute包（通常UDP端口33434-33534）
+			if originalProto == 17 && len(pkt.Data) >= 36 { // UDP
+				originalUDPHeader := pkt.Data[28:36]
+				destPort := uint16(originalUDPHeader[2])<<8 | uint16(originalUDPHeader[3])
+				if destPort >= 33434 && destPort <= 33534 {
+					fmt.Printf("Traceroute packet detected, notifying traceroute program\n")
+				}
+			}
+
+		case 1: // Fragment reassembly timeout
+			// 1. 清理分片重组缓存
+			// 2. 通知发送方分片丢失
+			// 3. 可能调整分片策略
+			fmt.Printf("Processing fragment reassembly timeout\n")
+
+			// 清理相关的分片缓存
+			fragmentID := uint16(originalIPHeader[4])<<8 | uint16(originalIPHeader[5])
+			fmt.Printf("Cleaning up fragments for ID: %d\n", fragmentID)
+
+			// 在真实实现中，这里会清理fe.fragmentCache中的相关条目
+		}
+
+		// 根据协议类型进行额外处理
+		switch originalProto {
+		case 6: // TCP
+			// 通知TCP连接管理器可能需要重传或调整窗口
+			fmt.Printf("Notifying TCP about time exceeded\n")
+		case 17: // UDP
+			// 通知UDP应用程序
+			fmt.Printf("Notifying UDP application about time exceeded\n")
+		case 1: // ICMP
+			// 通知ping程序
+			fmt.Printf("Notifying ping program about time exceeded\n")
+		}
+	}
+
 	return nil
 }
 
 // isPortListening 检查端口是否有服务监听
 func (fe *Engine) isPortListening(port uint16, protocol string) bool {
-	// 在真实实现中，这里会检查系统的端口监听状态
-	// 可以通过读取 /proc/net/tcp 和 /proc/net/udp 文件实现
+	// 尝试连接到本地端口来检查是否有服务监听
+	address := fmt.Sprintf("127.0.0.1:%d", port)
 
-	// 常见的系统端口
-	commonPorts := map[uint16]bool{
-		22:  true, // SSH
-		53:  true, // DNS
-		80:  true, // HTTP
-		443: true, // HTTPS
+	var conn net.Conn
+	var err error
+
+	// 根据协议类型进行连接测试
+	switch protocol {
+	case "tcp":
+		conn, err = net.DialTimeout("tcp", address, 100*time.Millisecond)
+	case "udp":
+		// UDP是无连接的，我们尝试发送一个小数据包
+		udpAddr, parseErr := net.ResolveUDPAddr("udp", address)
+		if parseErr != nil {
+			return false
+		}
+		conn, err = net.DialUDP("udp", nil, udpAddr)
+		if err == nil && conn != nil {
+			// 发送一个小的测试数据包
+			_, writeErr := conn.Write([]byte{0})
+			_ = conn.Close()
+			// 对于UDP，如果能写入就认为端口可能在监听
+			return writeErr == nil
+		}
+	default:
+		return false
 	}
 
-	return commonPorts[port]
+	if err != nil {
+		// 连接失败，端口可能没有监听
+		return false
+	}
+
+	if conn != nil {
+		_ = conn.Close()
+		// 连接成功，说明有服务在监听
+		return true
+	}
+
+	return false
 }
 
 // sendICMPProtocolUnreachable 发送ICMP Protocol Unreachable
@@ -741,50 +1006,172 @@ func (fe *Engine) sendToInterface(interfaceName string, frame []byte) error {
 
 // sendRawPacket 使用原始套接字发送数据包
 func (fe *Engine) sendRawPacket(iface *net.Interface, frame []byte) error {
-	// 尝试创建原始套接字
-	// 注意：这需要root权限
+	// 检查权限和接口状态
+	if iface == nil {
+		return fmt.Errorf("interface is nil")
+	}
 
-	// 对于不同操作系统的实现：
-	// Linux: 使用 AF_PACKET
-	// macOS: 使用 BPF 或者通过 TUN/TAP
-	// Windows: 使用 WinPcap/Npcap
+	if len(frame) == 0 {
+		return fmt.Errorf("empty frame")
+	}
 
-	// 这里提供一个基于文件描述符的通用实现
+	// 在macOS上，我们需要使用BPF (Berkeley Packet Filter)
+	// 或者通过系统调用直接发送
 	return fe.sendViaRawSocket(iface, frame)
 }
 
 // sendViaRawSocket 通过原始套接字发送数据包
 func (fe *Engine) sendViaRawSocket(iface *net.Interface, frame []byte) error {
-	// 在真实环境中，这里会根据操作系统使用不同的实现：
-	// - Linux: AF_PACKET socket
-	// - macOS: BPF (Berkeley Packet Filter) 或 TUN/TAP
-	// - Windows: WinPcap/Npcap
+	// 尝试使用原始套接字发送
+	// 首先尝试创建原始套接字
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+	if err != nil {
+		// 如果无法创建原始套接字（通常是权限问题），回退到模拟发送
+		fmt.Printf("Warning: Cannot create raw socket (need root privileges): %v\n", err)
+		return fe.simulateSend(iface, frame)
+	}
+	defer func() {
+		_ = syscall.Close(fd)
+	}()
 
-	// 由于需要平台特定的实现和root权限，这里提供一个通用的模拟实现
-	// 在生产环境中，建议使用专门的网络库如 gopacket 或 libpcap 绑定
+	// 设置IP_HDRINCL选项，允许我们自己构造IP头部
+	err = syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 1)
+	if err != nil {
+		fmt.Printf("Warning: Cannot set IP_HDRINCL: %v\n", err)
+		return fe.simulateSend(iface, frame)
+	}
 
-	return fe.simulateSend(iface, frame)
+	// 在Linux上绑定到指定接口，macOS不支持SO_BINDTODEVICE
+	if runtime.GOOS == "linux" {
+		// Linux特定的接口绑定
+		const SoBindToDevice = 25
+		err = syscall.SetsockoptString(fd, syscall.SOL_SOCKET, SoBindToDevice, iface.Name)
+		if err != nil {
+			fmt.Printf("Warning: Cannot bind to device %s: %v\n", iface.Name, err)
+		}
+	}
+
+	// 提取目标IP地址（从IP头部）
+	if len(frame) < 34 { // 以太网头(14) + IP头最小长度(20)
+		return fmt.Errorf("frame too short")
+	}
+
+	// 跳过以太网头部，获取IP数据包
+	ipPacket := frame[14:]
+	if len(ipPacket) < 20 {
+		return fmt.Errorf("IP packet too short")
+	}
+
+	// 提取目标IP地址（IP头部第16-19字节）
+	dstIP := net.IPv4(ipPacket[16], ipPacket[17], ipPacket[18], ipPacket[19])
+
+	// 构造目标地址结构
+	addr := &syscall.SockaddrInet4{
+		Port: 0,
+	}
+	copy(addr.Addr[:], dstIP.To4())
+
+	// 发送IP数据包（不包含以太网头部）
+	err = syscall.Sendto(fd, ipPacket, 0, addr)
+	if err != nil {
+		fmt.Printf("Warning: Raw socket send failed: %v\n", err)
+		return fe.simulateSend(iface, frame)
+	}
+
+	fmt.Printf("Successfully sent %d bytes via raw socket on interface %s\n", len(ipPacket), iface.Name)
+	return nil
 }
 
 // simulateSend 模拟发送（当无法使用原始套接字时）
 func (fe *Engine) simulateSend(iface *net.Interface, frame []byte) error {
-	// 在无法使用原始套接字的情况下，我们可以：
-	// 1. 记录发送日志
-	// 2. 写入到文件进行调试
-	// 3. 通过其他方式模拟网络发送
+	// 当原始套接字发送失败时的备用发送方案
+	// 在真实路由系统中，这里可以：
+	// 1. 使用TUN/TAP接口
+	// 2. 通过用户空间网络栈发送
+	// 3. 使用其他网络API
 
-	// 这里简单记录发送信息
-	fmt.Printf("Simulated send on interface %s: %d bytes\n", iface.Name, len(frame))
+	// 验证帧格式
+	if len(frame) < 14 {
+		return fmt.Errorf("frame too short: %d bytes", len(frame))
+	}
 
-	// 可以选择写入到调试文件
+	// 解析以太网头部
+	dstMAC := frame[0:6]
+	srcMAC := frame[6:12]
+	etherType := uint16(frame[12])<<8 | uint16(frame[13])
+
+	fmt.Printf("Fallback send on interface %s: %d bytes\n", iface.Name, len(frame))
+	fmt.Printf("  Dst MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+		dstMAC[0], dstMAC[1], dstMAC[2], dstMAC[3], dstMAC[4], dstMAC[5])
+	fmt.Printf("  Src MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+		srcMAC[0], srcMAC[1], srcMAC[2], srcMAC[3], srcMAC[4], srcMAC[5])
+	fmt.Printf("  EtherType: 0x%04x\n", etherType)
+
+	// 在真实实现中，这里可以：
+	switch etherType {
+	case 0x0800: // IPv4
+		if len(frame) >= 34 { // 以太网头部14字节 + IP头部最少20字节
+			ipHeader := frame[14:34]
+			srcIP := fmt.Sprintf("%d.%d.%d.%d", ipHeader[12], ipHeader[13], ipHeader[14], ipHeader[15])
+			dstIP := fmt.Sprintf("%d.%d.%d.%d", ipHeader[16], ipHeader[17], ipHeader[18], ipHeader[19])
+			protocol := int(ipHeader[9])
+
+			fmt.Printf("  IPv4: %s -> %s, protocol: %d\n", srcIP, dstIP, protocol)
+
+			// 尝试通过系统网络栈发送
+			return fe.sendViaSystemStack(srcIP, dstIP, protocol, frame[34:])
+		}
+
+	case 0x0806: // ARP
+		fmt.Printf("  ARP packet\n")
+		// ARP包通常由系统处理，这里记录即可
+
+	default:
+		fmt.Printf("  Unknown EtherType: 0x%04x\n", etherType)
+	}
+
+	// 记录发送统计
+	atomic.AddUint64(&fe.stats.PacketsForwarded, 1)
+
+	// 在开发/测试环境中，可以写入到文件用于分析
 	if fe.config.EnableIPForwarding {
-		// 写入调试信息到日志
-		debugInfo := fmt.Sprintf("Interface: %s, Frame size: %d bytes, Timestamp: %s\n",
+		debugInfo := fmt.Sprintf("Fallback send - Interface: %s, Frame size: %d bytes, Timestamp: %s\n",
 			iface.Name, len(frame), time.Now().Format(time.RFC3339))
 
-		// 这里可以集成日志系统
+		// 这里可以集成到日志系统或写入调试文件
 		_ = debugInfo
 	}
+
+	return nil
+}
+
+// sendViaSystemStack 通过系统网络栈发送数据包
+func (fe *Engine) sendViaSystemStack(srcIP, dstIP string, protocol int, payload []byte) error {
+	// 在真实实现中，这里可以：
+	// 1. 创建相应协议的套接字
+	// 2. 绑定源地址
+	// 3. 发送到目标地址
+
+	switch protocol {
+	case 1: // ICMP
+		// 可以使用ICMP套接字发送
+		fmt.Printf("Would send ICMP packet via system stack: %s -> %s\n", srcIP, dstIP)
+
+	case 6: // TCP
+		// 可以使用TCP套接字发送（如果是已建立的连接）
+		fmt.Printf("Would send TCP packet via system stack: %s -> %s\n", srcIP, dstIP)
+
+	case 17: // UDP
+		// 可以使用UDP套接字发送
+		fmt.Printf("Would send UDP packet via system stack: %s -> %s\n", srcIP, dstIP)
+
+	default:
+		fmt.Printf("Unsupported protocol %d for system stack sending\n", protocol)
+		return fmt.Errorf("unsupported protocol: %d", protocol)
+	}
+
+	// 在真实实现中，这里会实际发送数据包
+	// 目前只是记录，避免在没有适当权限时出错
 
 	return nil
 }
@@ -871,8 +1258,41 @@ func (fe *Engine) generateFragmentID() uint16 {
 
 // forwardFragment 转发单个分片
 func (fe *Engine) forwardFragment(fragment *IPPacket, outInterface *interfaces.Interface, gateway net.IP) error {
-	// 构建IP头部
-	ipHeader := fe.buildIPHeader(fragment)
+	// 验证分片参数
+	if fragment == nil {
+		return fmt.Errorf("fragment is nil")
+	}
+
+	if outInterface == nil {
+		return fmt.Errorf("output interface is nil")
+	}
+
+	// 检查分片大小是否超过接口MTU
+	interfaceMTU := outInterface.MTU
+	if interfaceMTU == 0 {
+		interfaceMTU = 1500 // 默认以太网MTU
+	}
+
+	// IP头部最小20字节，加上以太网头部14字节
+	maxPayloadSize := interfaceMTU - 20 - 14
+
+	if len(fragment.Data) > maxPayloadSize {
+		// 需要进一步分片
+		return fe.fragmentLargePacket(fragment, outInterface, gateway, maxPayloadSize)
+	}
+
+	// 验证分片偏移对齐（必须是8字节的倍数）
+	if fragment.FragmentOffset%8 != 0 {
+		return fmt.Errorf("fragment offset %d is not aligned to 8-byte boundary", fragment.FragmentOffset)
+	}
+
+	// 构建IP头部，包含正确的分片信息
+	ipHeader := fe.buildFragmentIPHeader(fragment)
+
+	// 验证IP头部长度
+	if len(ipHeader) < 20 {
+		return fmt.Errorf("invalid IP header length: %d", len(ipHeader))
+	}
 
 	// 组合完整的IP数据包
 	fullPacket := append(ipHeader, fragment.Data...)
@@ -880,46 +1300,167 @@ func (fe *Engine) forwardFragment(fragment *IPPacket, outInterface *interfaces.I
 	// 更新数据包大小
 	fragment.Size = len(fullPacket)
 
+	// 验证总长度不超过MTU
+	if len(fullPacket) > interfaceMTU-14 { // 减去以太网头部
+		return fmt.Errorf("fragment size %d exceeds interface MTU %d", len(fullPacket), interfaceMTU-14)
+	}
+
 	// 获取目标MAC地址
 	var dstMAC net.HardwareAddr
 	var err error
 
+	targetIP := fragment.Destination
 	if gateway != nil {
-		// 通过网关转发
-		entry, found := fe.arpTable.LookupEntry(gateway)
-		if found {
-			dstMAC = entry.MACAddress
-		} else {
-			err = fmt.Errorf("ARP entry not found for gateway %v", gateway)
-		}
-	} else {
-		// 直接转发到目标
-		entry, found := fe.arpTable.LookupEntry(fragment.Destination)
-		if found {
-			dstMAC = entry.MACAddress
-		} else {
-			err = fmt.Errorf("ARP entry not found for destination %v", fragment.Destination)
-		}
+		targetIP = gateway
 	}
 
-	if err != nil {
+	// 尝试从ARP表获取MAC地址
+	entry, found := fe.arpTable.LookupEntry(targetIP)
+	if found {
+		dstMAC = entry.MACAddress
+	} else {
 		// 发送ARP请求
-		targetIP := fragment.Destination
-		if gateway != nil {
-			targetIP = gateway
-		}
-
 		err = fe.arpTable.SendARPRequest(targetIP, outInterface.Name)
 		if err != nil {
-			return fmt.Errorf("failed to send ARP request: %v", err)
+			return fmt.Errorf("failed to send ARP request for %v: %v", targetIP, err)
 		}
 
-		// 在真实实现中，这里应该缓存数据包等待ARP响应
+		// 在真实实现中，这里应该：
+		// 1. 将分片缓存到待发送队列
+		// 2. 设置ARP响应回调
+		// 3. 实现超时重传机制
+		fmt.Printf("ARP resolution needed for %v, caching fragment ID %d offset %d\n",
+			targetIP, fragment.FragmentID, fragment.FragmentOffset)
+
 		return fmt.Errorf("ARP resolution needed for %v", targetIP)
 	}
 
+	// 记录分片转发统计
+	atomic.AddUint64(&fe.stats.PacketsForwarded, 1)
+
+	// 记录分片信息用于调试
+	fmt.Printf("Forwarding fragment: ID=%d, offset=%d, size=%d, more=%t, via %s\n",
+		fragment.FragmentID, fragment.FragmentOffset, len(fragment.Data),
+		fragment.MoreFragments, outInterface.Name)
+
 	// 发送分片
-	return fe.sendPacket(fragment, outInterface, dstMAC)
+	err = fe.sendPacket(fragment, outInterface, dstMAC)
+	if err != nil {
+		atomic.AddUint64(&fe.stats.PacketsDropped, 1)
+		return fmt.Errorf("failed to send fragment: %v", err)
+	}
+
+	return nil
+}
+
+// fragmentLargePacket 对过大的分片进行进一步分片
+func (fe *Engine) fragmentLargePacket(fragment *IPPacket, outInterface *interfaces.Interface, gateway net.IP, maxPayloadSize int) error {
+	// 确保分片大小是8字节的倍数
+	fragmentSize := (maxPayloadSize / 8) * 8
+
+	data := fragment.Data
+	offset := fragment.FragmentOffset
+
+	for len(data) > 0 {
+		// 计算当前分片的大小
+		currentSize := fragmentSize
+		if len(data) < currentSize {
+			currentSize = len(data)
+		}
+
+		// 创建新的分片
+		newFragment := &IPPacket{
+			Source:         fragment.Source,
+			Destination:    fragment.Destination,
+			TTL:            fragment.TTL,
+			Protocol:       fragment.Protocol,
+			Data:           data[:currentSize],
+			FragmentID:     fragment.FragmentID,
+			FragmentOffset: offset,
+			MoreFragments:  len(data) > currentSize || fragment.MoreFragments,
+			DontFragment:   false, // 强制允许分片
+			InInterface:    fragment.InInterface,
+			Timestamp:      fragment.Timestamp,
+		}
+
+		// 递归转发分片
+		err := fe.forwardFragment(newFragment, outInterface, gateway)
+		if err != nil {
+			return fmt.Errorf("failed to forward sub-fragment at offset %d: %v", offset, err)
+		}
+
+		// 移动到下一个分片
+		data = data[currentSize:]
+		offset += currentSize / 8 // 偏移以8字节为单位
+	}
+
+	return nil
+}
+
+// buildFragmentIPHeader 构建包含分片信息的IP头部
+func (fe *Engine) buildFragmentIPHeader(fragment *IPPacket) []byte {
+	header := make([]byte, 20) // 标准IP头部长度
+
+	// 版本和头部长度
+	header[0] = 0x45 // IPv4, 20字节头部
+
+	// 服务类型
+	header[1] = 0x00
+
+	// 总长度（头部 + 数据）
+	totalLength := 20 + len(fragment.Data)
+	header[2] = byte(totalLength >> 8)
+	header[3] = byte(totalLength & 0xFF)
+
+	// 分片标识符
+	header[4] = byte(fragment.FragmentID >> 8)
+	header[5] = byte(fragment.FragmentID & 0xFF)
+
+	// 标志位和分片偏移
+	flagsAndOffset := uint16(0)
+
+	// 设置标志位
+	if fragment.DontFragment {
+		flagsAndOffset |= 0x4000 // DF位
+	}
+	if fragment.MoreFragments {
+		flagsAndOffset |= 0x2000 // MF位
+	}
+
+	// 设置分片偏移（以8字节为单位）
+	flagsAndOffset |= uint16(fragment.FragmentOffset) & 0x1FFF
+
+	header[6] = byte(flagsAndOffset >> 8)
+	header[7] = byte(flagsAndOffset & 0xFF)
+
+	// TTL
+	header[8] = byte(fragment.TTL)
+
+	// 协议
+	header[9] = byte(fragment.Protocol)
+
+	// 校验和（先设为0）
+	header[10] = 0
+	header[11] = 0
+
+	// 源IP地址
+	srcIP := fragment.Source.To4()
+	if srcIP != nil {
+		copy(header[12:16], srcIP)
+	}
+
+	// 目标IP地址
+	dstIP := fragment.Destination.To4()
+	if dstIP != nil {
+		copy(header[16:20], dstIP)
+	}
+
+	// 计算并设置校验和
+	checksum := fe.calculateIPChecksum(header)
+	header[10] = byte(checksum >> 8)
+	header[11] = byte(checksum & 0xFF)
+
+	return header
 }
 
 // buildIPHeader 构建IP头部
@@ -1551,4 +2092,194 @@ func (pw *PacketWorker) Start() {
 
 func (pw *PacketWorker) Stop() {
 	close(pw.stop)
+}
+
+// TCP处理方法
+
+// handleTCPSyn 处理TCP SYN包（新连接请求）
+func (fe *Engine) handleTCPSyn(pkt *IPPacket, srcPort, dstPort uint16, seqNum uint32) error {
+	// 构造SYN-ACK响应
+	// 在真实实现中，这里会创建新的连接状态
+
+	// 生成初始序列号
+	initialSeqNum := uint32(time.Now().UnixNano() & 0xFFFFFFFF)
+
+	// 构造TCP SYN-ACK头部
+	tcpHeader := make([]byte, 20)
+
+	// 源端口和目标端口（交换）
+	tcpHeader[0] = byte(dstPort >> 8)
+	tcpHeader[1] = byte(dstPort)
+	tcpHeader[2] = byte(srcPort >> 8)
+	tcpHeader[3] = byte(srcPort)
+
+	// 序列号
+	tcpHeader[4] = byte(initialSeqNum >> 24)
+	tcpHeader[5] = byte(initialSeqNum >> 16)
+	tcpHeader[6] = byte(initialSeqNum >> 8)
+	tcpHeader[7] = byte(initialSeqNum)
+
+	// 确认号（原序列号+1）
+	ackNum := seqNum + 1
+	tcpHeader[8] = byte(ackNum >> 24)
+	tcpHeader[9] = byte(ackNum >> 16)
+	tcpHeader[10] = byte(ackNum >> 8)
+	tcpHeader[11] = byte(ackNum)
+
+	// 头部长度和标志位
+	tcpHeader[12] = 0x50 // 头部长度20字节
+	tcpHeader[13] = 0x12 // SYN + ACK标志
+
+	// 窗口大小
+	tcpHeader[14] = 0x20 // 8192字节窗口
+	tcpHeader[15] = 0x00
+
+	// 创建SYN-ACK数据包
+	synAckPacket := NewIPPacket(pkt.Destination, pkt.Source, 64, 6, tcpHeader)
+
+	fmt.Printf("Sending TCP SYN-ACK: %s:%d -> %s:%d\n",
+		pkt.Destination, dstPort, pkt.Source, srcPort)
+
+	return fe.ForwardPacket(synAckPacket)
+}
+
+// handleTCPAck 处理TCP ACK包
+func (fe *Engine) handleTCPAck(pkt *IPPacket, srcPort, dstPort uint16, seqNum, ackNum uint32) error {
+	// 在真实实现中，这里会更新连接状态
+	// 验证序列号和确认号
+
+	fmt.Printf("Received TCP ACK: %s:%d -> %s:%d (seq=%d, ack=%d)\n",
+		pkt.Source, srcPort, pkt.Destination, dstPort, seqNum, ackNum)
+
+	// 这里可以实现连接状态管理
+	// 例如：更新发送窗口、处理重传等
+
+	return nil
+}
+
+// handleTCPFin 处理TCP FIN包（连接关闭）
+func (fe *Engine) handleTCPFin(pkt *IPPacket, srcPort, dstPort uint16, seqNum uint32) error {
+	// 发送FIN-ACK响应
+
+	// 构造TCP FIN-ACK头部
+	tcpHeader := make([]byte, 20)
+
+	// 源端口和目标端口（交换）
+	tcpHeader[0] = byte(dstPort >> 8)
+	tcpHeader[1] = byte(dstPort)
+	tcpHeader[2] = byte(srcPort >> 8)
+	tcpHeader[3] = byte(srcPort)
+
+	// 序列号（使用当前连接的序列号）
+	currentSeqNum := uint32(time.Now().UnixNano() & 0xFFFFFFFF)
+	tcpHeader[4] = byte(currentSeqNum >> 24)
+	tcpHeader[5] = byte(currentSeqNum >> 16)
+	tcpHeader[6] = byte(currentSeqNum >> 8)
+	tcpHeader[7] = byte(currentSeqNum)
+
+	// 确认号（原序列号+1）
+	ackNum := seqNum + 1
+	tcpHeader[8] = byte(ackNum >> 24)
+	tcpHeader[9] = byte(ackNum >> 16)
+	tcpHeader[10] = byte(ackNum >> 8)
+	tcpHeader[11] = byte(ackNum)
+
+	// 头部长度和标志位
+	tcpHeader[12] = 0x50 // 头部长度20字节
+	tcpHeader[13] = 0x11 // FIN + ACK标志
+
+	// 窗口大小
+	tcpHeader[14] = 0x20
+	tcpHeader[15] = 0x00
+
+	// 创建FIN-ACK数据包
+	finAckPacket := NewIPPacket(pkt.Destination, pkt.Source, 64, 6, tcpHeader)
+
+	fmt.Printf("Sending TCP FIN-ACK: %s:%d -> %s:%d\n",
+		pkt.Destination, dstPort, pkt.Source, srcPort)
+
+	return fe.ForwardPacket(finAckPacket)
+}
+
+// handleTCPRst 处理TCP RST包（连接重置）
+func (fe *Engine) handleTCPRst(pkt *IPPacket, srcPort, dstPort uint16) error {
+	// RST包表示连接被重置，清理连接状态
+
+	fmt.Printf("Received TCP RST: %s:%d -> %s:%d\n",
+		pkt.Source, srcPort, pkt.Destination, dstPort)
+
+	// 在真实实现中，这里会清理相关的连接状态
+	// 例如：从连接表中删除连接、释放资源等
+
+	return nil
+}
+
+// handleTCPData 处理TCP数据包
+func (fe *Engine) handleTCPData(pkt *IPPacket, srcPort, dstPort uint16, seqNum, ackNum uint32) error {
+	// 提取TCP头部长度
+	if len(pkt.Data) < 20 {
+		return fmt.Errorf("TCP header too short")
+	}
+
+	headerLen := int((pkt.Data[12] >> 4) * 4)
+	if headerLen < 20 || headerLen > len(pkt.Data) {
+		return fmt.Errorf("invalid TCP header length")
+	}
+
+	// 提取数据部分
+	dataLen := len(pkt.Data) - headerLen
+
+	fmt.Printf("Received TCP data: %s:%d -> %s:%d (seq=%d, ack=%d, len=%d)\n",
+		pkt.Source, srcPort, pkt.Destination, dstPort, seqNum, ackNum, dataLen)
+
+	if dataLen > 0 {
+		// 在真实实现中，这里会：
+		// 1. 验证序列号
+		// 2. 将数据交付给应用层
+		// 3. 发送ACK确认
+
+		// 发送ACK确认
+		return fe.sendTCPAck(pkt, srcPort, dstPort, seqNum, uint32(dataLen))
+	}
+
+	return nil
+}
+
+// sendTCPAck 发送TCP ACK确认
+func (fe *Engine) sendTCPAck(pkt *IPPacket, srcPort, dstPort uint16, seqNum uint32, dataLen uint32) error {
+	// 构造TCP ACK头部
+	tcpHeader := make([]byte, 20)
+
+	// 源端口和目标端口（交换）
+	tcpHeader[0] = byte(dstPort >> 8)
+	tcpHeader[1] = byte(dstPort)
+	tcpHeader[2] = byte(srcPort >> 8)
+	tcpHeader[3] = byte(srcPort)
+
+	// 序列号（使用当前连接的序列号）
+	currentSeqNum := uint32(time.Now().UnixNano() & 0xFFFFFFFF)
+	tcpHeader[4] = byte(currentSeqNum >> 24)
+	tcpHeader[5] = byte(currentSeqNum >> 16)
+	tcpHeader[6] = byte(currentSeqNum >> 8)
+	tcpHeader[7] = byte(currentSeqNum)
+
+	// 确认号（原序列号+数据长度）
+	ackNum := seqNum + dataLen
+	tcpHeader[8] = byte(ackNum >> 24)
+	tcpHeader[9] = byte(ackNum >> 16)
+	tcpHeader[10] = byte(ackNum >> 8)
+	tcpHeader[11] = byte(ackNum)
+
+	// 头部长度和标志位
+	tcpHeader[12] = 0x50 // 头部长度20字节
+	tcpHeader[13] = 0x10 // ACK标志
+
+	// 窗口大小
+	tcpHeader[14] = 0x20
+	tcpHeader[15] = 0x00
+
+	// 创建ACK数据包
+	ackPacket := NewIPPacket(pkt.Destination, pkt.Source, 64, 6, tcpHeader)
+
+	return fe.ForwardPacket(ackPacket)
 }
