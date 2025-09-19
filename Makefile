@@ -67,6 +67,10 @@ install-tools:
 	@echo "安装开发工具..."
 	go install golang.org/x/tools/cmd/goimports@latest
 
+install-hooks:
+	@chmod +x ./scripts/install-hooks.sh
+	@./scripts/install-hooks.sh
+
 # 完整检查（格式化、检查、测试）
 check: fmt vet test
 	@echo "所有检查完成"
