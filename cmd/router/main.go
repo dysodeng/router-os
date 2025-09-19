@@ -4,12 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"router-os/internal/arp"
+	"router-os/internal/config"
 	"router-os/internal/dhcp"
 	"router-os/internal/firewall"
 	"router-os/internal/forwarding"
@@ -24,9 +26,8 @@ import (
 func main() {
 	// 命令行参数
 	var (
-		webPort = flag.Int("port", 8080, "Web管理界面端口")
-		webHost = flag.String("host", "0.0.0.0", "Web管理界面监听地址")
-		help    = flag.Bool("help", false, "显示帮助信息")
+		configFile = flag.String("config", "config.json", "配置文件路径")
+		help       = flag.Bool("help", false, "显示帮助信息")
 	)
 	flag.Parse()
 
@@ -39,6 +40,14 @@ func main() {
 	}
 
 	log.Println("启动 Router OS...")
+
+	// 加载配置文件
+	log.Printf("加载配置文件: %s", *configFile)
+	appConfig, err := config.LoadAppConfig(*configFile)
+	if err != nil {
+		log.Fatalf("加载配置文件失败: %v", err)
+	}
+	log.Printf("配置加载成功 - DHCP启用: %v, VPN启用: %v", appConfig.DHCP.Enabled, appConfig.VPN.Enabled)
 
 	// 初始化各个模块
 	log.Println("初始化网络接口管理器...")
@@ -79,14 +88,71 @@ func main() {
 
 	log.Println("初始化DHCP服务器...")
 	dhcpServer := dhcp.NewDHCPServer()
-	if err := dhcpServer.Start(); err != nil {
-		log.Fatalf("启动DHCP服务器失败: %v", err)
+
+	// 根据配置决定是否启动DHCP服务器
+	if appConfig.DHCP.Enabled {
+		log.Println("DHCP服务已启用，正在配置...")
+
+		// 配置DHCP服务器
+		dhcpConfig := dhcpServer.GetConfig()
+		dhcpConfig.Enabled = true
+		dhcpConfig.Interface = appConfig.DHCP.Interface
+		dhcpConfig.ListenAddress = "0.0.0.0"
+		dhcpConfig.DefaultLeaseTime = appConfig.DHCP.GetLeaseTimeDuration()
+		dhcpServer.SetConfig(dhcpConfig)
+
+		// 添加地址池
+		_, network, err := net.ParseCIDR(fmt.Sprintf("%s/%s", appConfig.DHCP.StartIP[:len(appConfig.DHCP.StartIP)-3], "24"))
+		if err != nil {
+			// 如果解析失败，使用默认网络
+			_, network, _ = net.ParseCIDR("192.168.1.0/24")
+		}
+
+		pool := &dhcp.AddressPool{
+			ID:          "default",
+			Name:        "Default Pool",
+			Network:     network,
+			StartIP:     net.ParseIP(appConfig.DHCP.StartIP),
+			EndIP:       net.ParseIP(appConfig.DHCP.EndIP),
+			Gateway:     net.ParseIP(appConfig.DHCP.Gateway),
+			DNSServers:  make([]net.IP, len(appConfig.DHCP.DNSServers)),
+			DomainName:  "local",
+			LeaseTime:   appConfig.DHCP.GetLeaseTimeDuration(),
+			Enabled:     true,
+			Options:     make(map[byte][]byte),
+			ExcludedIPs: []net.IP{},
+			CreatedAt:   time.Now(),
+		}
+
+		// 转换DNS服务器
+		for i, dns := range appConfig.DHCP.DNSServers {
+			pool.DNSServers[i] = net.ParseIP(dns)
+		}
+
+		if err := dhcpServer.AddPool(pool); err != nil {
+			log.Printf("添加DHCP地址池失败: %v", err)
+		}
+
+		if err := dhcpServer.Start(); err != nil {
+			log.Fatalf("启动DHCP服务器失败: %v", err)
+		}
+		log.Println("DHCP服务器启动成功")
+	} else {
+		log.Println("DHCP服务已禁用，跳过启动")
 	}
 
 	log.Println("初始化VPN服务器...")
 	vpnServer := vpn.NewVPNServer()
-	if err := vpnServer.Start(); err != nil {
-		log.Fatalf("启动VPN服务器失败: %v", err)
+
+	// 根据配置决定是否启动VPN服务器
+	if appConfig.VPN.Enabled {
+		log.Println("VPN服务已启用，正在启动...")
+		if err := vpnServer.Start(); err != nil {
+			log.Fatalf("启动VPN服务器失败: %v", err)
+		}
+		log.Println("VPN服务器启动成功")
+	} else {
+		log.Println("VPN服务已禁用，跳过启动")
 	}
 
 	// 创建路由器实例
@@ -102,21 +168,27 @@ func main() {
 		VPN:              vpnServer,
 	}
 
-	log.Println("启动Web管理界面...")
-	webConfig := web.WebConfig{
-		Port:     *webPort,
-		Host:     *webHost,
-		Username: "admin",
-		Password: "admin123",
-	}
-	webServer := web.NewWebServer(webConfig, router)
-	if err := webServer.Start(); err != nil {
-		log.Fatalf("启动Web服务器失败: %v", err)
+	// 根据配置决定是否启动Web管理界面
+	var webServer *web.WebServer
+	if appConfig.Web.Enabled {
+		log.Println("Web管理界面已启用，正在启动...")
+		webConfig := web.WebConfig{
+			Port:     appConfig.Web.Port,
+			Host:     appConfig.Web.Host,
+			Username: appConfig.Web.Username,
+			Password: appConfig.Web.Password,
+		}
+		webServer = web.NewWebServer(webConfig, router)
+		if err := webServer.Start(); err != nil {
+			log.Fatalf("启动Web服务器失败: %v", err)
+		}
+		log.Printf("Web管理界面启动成功: http://%s:%d", appConfig.Web.Host, appConfig.Web.Port)
+		log.Printf("用户名: %s, 密码: %s", appConfig.Web.Username, appConfig.Web.Password)
+	} else {
+		log.Println("Web管理界面已禁用，跳过启动")
 	}
 
 	log.Printf("Router OS 启动完成!")
-	log.Printf("Web管理界面: http://%s:%d", *webHost, *webPort)
-	log.Printf("默认用户名: admin, 密码: admin123")
 
 	// 等待中断信号
 	sigChan := make(chan os.Signal, 1)
@@ -126,8 +198,10 @@ func main() {
 	log.Println("正在关闭 Router OS...")
 
 	// 优雅关闭所有服务
-	if err := webServer.Stop(); err != nil {
-		log.Printf("关闭Web服务器失败: %v", err)
+	if webServer != nil {
+		if err := webServer.Stop(); err != nil {
+			log.Printf("关闭Web服务器失败: %v", err)
+		}
 	}
 
 	vpnServer.Stop()

@@ -52,6 +52,11 @@ type Interface struct {
 	// 通常指向路由器或上级网络设备的IP地址
 	Gateway net.IP
 
+	// MACAddress MAC地址
+	// 网络接口的物理地址，用于数据链路层通信
+	// 每个网络接口都有唯一的MAC地址
+	MACAddress net.HardwareAddr
+
 	// MTU 最大传输单元（Maximum Transmission Unit）
 	// 此接口能够传输的最大数据包大小（字节）
 	// 以太网接口通常为1500字节，影响数据包分片
@@ -245,7 +250,7 @@ func (m *Manager) Start() error {
 func (m *Manager) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// 设置运行状态为false，停止所有管理活动
 	// 这会停止接口监控、统计收集等后台任务
 	m.running = false
@@ -298,7 +303,7 @@ func (m *Manager) AddInterface(iface *Interface) error {
 	// 设置接口的最后活跃时间为当前时间
 	// 这有助于跟踪接口的活跃状态
 	iface.LastSeen = time.Now()
-	
+
 	// 将接口添加到映射表中
 	m.interfaces[iface.Name] = iface
 	return nil
@@ -406,7 +411,7 @@ func (m *Manager) GetInterface(name string) (*Interface, error) {
 //
 //	interfaces := manager.GetAllInterfaces()
 //	for name, iface := range interfaces {
-//	    fmt.Printf("接口: %s, 状态: %v, IP: %v\n", 
+//	    fmt.Printf("接口: %s, 状态: %v, IP: %v\n",
 //	        name, iface.Status, iface.IPAddress)
 //	}
 //
@@ -521,7 +526,7 @@ func (m *Manager) SetInterfaceStatus(name string, status InterfaceStatus) error 
 // 使用示例：
 //
 //	// 更新接口统计信息
-//	err := manager.UpdateInterfaceStats("eth0", 
+//	err := manager.UpdateInterfaceStats("eth0",
 //	    1000,  // 发送1000个包
 //	    950,   // 接收950个包
 //	    1500000, // 发送1.5MB
@@ -607,7 +612,7 @@ func (m *Manager) GetActiveInterfaces() []*Interface {
 
 	// 创建活跃接口切片
 	var activeInterfaces []*Interface
-	
+
 	// 遍历所有接口，筛选活跃接口
 	for _, iface := range m.interfaces {
 		if iface.Status == InterfaceStatusUp {
@@ -678,10 +683,11 @@ func (m *Manager) discoverInterfaces() error {
 
 		// 创建新的接口对象，初始化基本信息
 		iface := &Interface{
-			Name:     netIface.Name,        // 接口名称（如eth0, wlan0）
-			MTU:      netIface.MTU,         // 最大传输单元
-			Status:   InterfaceStatusDown,  // 默认状态为关闭
-			LastSeen: time.Now(),           // 设置发现时间
+			Name:       netIface.Name,         // 接口名称（如eth0, wlan0）
+			MACAddress: netIface.HardwareAddr, // MAC地址
+			MTU:        netIface.MTU,          // 最大传输单元
+			Status:     InterfaceStatusDown,   // 默认状态为关闭
+			LastSeen:   time.Now(),            // 设置发现时间
 		}
 
 		// 检查接口是否处于启用状态

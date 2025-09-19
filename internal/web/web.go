@@ -805,8 +805,47 @@ func (ws *WebServer) handleInterfaces(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		ifaces := ws.router.InterfaceManager.GetAllInterfaces()
+
+		// 转换为前端期望的数组格式
+		var interfaceList []map[string]interface{}
+		for _, iface := range ifaces {
+			// 获取MAC地址
+			macAddr := ""
+			if iface.MACAddress != nil {
+				macAddr = iface.MACAddress.String()
+			}
+
+			// 格式化状态
+			var status string
+			switch iface.Status {
+			case 0: // InterfaceStatusDown
+				status = "down"
+			case 1: // InterfaceStatusUp
+				status = "up"
+			case 2: // InterfaceStatusTesting
+				status = "testing"
+			default:
+				status = "unknown"
+			}
+
+			// 格式化IP地址
+			var ipStr string
+			if iface.IPAddress != nil {
+				ipStr = iface.IPAddress.String()
+			}
+
+			interfaceData := map[string]interface{}{
+				"name":   iface.Name,
+				"ip":     ipStr,
+				"status": status,
+				"mac":    macAddr,
+				"mtu":    iface.MTU,
+			}
+			interfaceList = append(interfaceList, interfaceData)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(ifaces)
+		_ = json.NewEncoder(w).Encode(interfaceList)
 
 	case http.MethodPost:
 		// 添加接口配置
