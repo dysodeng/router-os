@@ -716,7 +716,7 @@ func (ws *WebServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 </html>`
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html))
+	_, _ = w.Write([]byte(html))
 }
 
 // handleStatic 处理静态文件
@@ -750,7 +750,7 @@ func (ws *WebServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	} else {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 	}
@@ -797,16 +797,16 @@ func (ws *WebServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 // handleInterfaces 处理接口管理
 func (ws *WebServer) handleInterfaces(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		interfaces := ws.router.InterfaceManager.GetAllInterfaces()
+		ifaces := ws.router.InterfaceManager.GetAllInterfaces()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(interfaces)
+		_ = json.NewEncoder(w).Encode(ifaces)
 
 	case http.MethodPost:
 		// 添加接口配置
@@ -854,7 +854,7 @@ func (ws *WebServer) handleInterfaceDetail(w http.ResponseWriter, r *http.Reques
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(iface)
+		_ = json.NewEncoder(w).Encode(iface)
 
 	case http.MethodPut:
 		// 更新接口配置
@@ -881,9 +881,9 @@ func (ws *WebServer) handleInterfaceDetail(w http.ResponseWriter, r *http.Reques
 		}
 
 		if config.Enable {
-			ws.router.InterfaceManager.SetInterfaceStatus(interfaceName, interfaces.InterfaceStatusUp)
+			_ = ws.router.InterfaceManager.SetInterfaceStatus(interfaceName, interfaces.InterfaceStatusUp)
 		} else {
-			ws.router.InterfaceManager.SetInterfaceStatus(interfaceName, interfaces.InterfaceStatusDown)
+			_ = ws.router.InterfaceManager.SetInterfaceStatus(interfaceName, interfaces.InterfaceStatusDown)
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -899,7 +899,7 @@ func (ws *WebServer) handleRoutes(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		routes := ws.router.RoutingTable.GetAllRoutes()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(routes)
+		_ = json.NewEncoder(w).Encode(routes)
 
 	case http.MethodPost:
 		var route struct {
@@ -940,7 +940,7 @@ func (ws *WebServer) handleARP(w http.ResponseWriter, r *http.Request) {
 
 	entries := ws.router.ARPTable.GetAllEntries()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+	_ = json.NewEncoder(w).Encode(entries)
 }
 
 // handleFirewallRules 处理防火墙规则
@@ -953,7 +953,7 @@ func (ws *WebServer) handleFirewallRules(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(rules)
+		_ = json.NewEncoder(w).Encode(rules)
 
 	case http.MethodPost:
 		var rule firewall.Rule
@@ -982,7 +982,7 @@ func (ws *WebServer) handleDHCPConfig(w http.ResponseWriter, r *http.Request) {
 
 	config := ws.router.DHCP.GetConfig()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(config)
 }
 
 // handleDHCPLeases 处理DHCP租约
@@ -994,7 +994,7 @@ func (ws *WebServer) handleDHCPLeases(w http.ResponseWriter, r *http.Request) {
 
 	leases := ws.router.DHCP.GetLeases()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(leases)
+	_ = json.NewEncoder(w).Encode(leases)
 }
 
 // handleVPNConfig 处理VPN配置
@@ -1006,7 +1006,7 @@ func (ws *WebServer) handleVPNConfig(w http.ResponseWriter, r *http.Request) {
 
 	config := ws.router.VPN.GetConfig()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(config)
 }
 
 // handleVPNClients 处理VPN客户端
@@ -1018,7 +1018,7 @@ func (ws *WebServer) handleVPNClients(w http.ResponseWriter, r *http.Request) {
 
 	clients := ws.router.VPN.GetConnectedClients()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(clients)
+	_ = json.NewEncoder(w).Encode(clients)
 }
 
 // handleQoSConfig 处理QoS配置
@@ -1030,5 +1030,5 @@ func (ws *WebServer) handleQoSConfig(w http.ResponseWriter, r *http.Request) {
 
 	config := ws.router.QoS.GetConfig()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(config)
 }

@@ -3,6 +3,7 @@ package dhcp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -415,8 +416,8 @@ func NewDHCPServer() *DHCPServer {
 	}
 
 	// 加载持久化数据
-	ds.loadLeases()
-	ds.loadReservations()
+	_ = ds.loadLeases()
+	_ = ds.loadReservations()
 
 	return ds
 }
@@ -474,7 +475,7 @@ func (ds *DHCPServer) Stop() {
 
 	// 关闭连接
 	if ds.conn != nil {
-		ds.conn.Close()
+		_ = ds.conn.Close()
 	}
 
 	// 发送停止信号
@@ -487,11 +488,12 @@ func (ds *DHCPServer) messageHandler() {
 
 	for ds.IsRunning() {
 		// 设置读取超时
-		ds.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		_ = ds.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 
 		n, clientAddr, err := ds.conn.ReadFromUDP(buffer)
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				continue // 超时继续
 			}
 			if ds.IsRunning() {
@@ -1324,7 +1326,9 @@ func (ds *DHCPServer) getDefaultRouteIP() net.IP {
 	if err != nil {
 		return nil
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP
@@ -1586,7 +1590,7 @@ func (ds *DHCPServer) CreateLease(ip net.IP, mac net.HardwareAddr, hostname stri
 	ds.stats.ActiveLeases++
 
 	// 持久化租约
-	ds.saveLease(lease)
+	_ = ds.saveLease(lease)
 
 	return lease
 }
@@ -1613,7 +1617,7 @@ func (ds *DHCPServer) RenewLease(lease *Lease, duration time.Duration) error {
 	lease.LastSeen = time.Now()
 
 	// 持久化更新
-	ds.saveLease(lease)
+	_ = ds.saveLease(lease)
 
 	return nil
 }
@@ -1636,7 +1640,7 @@ func (ds *DHCPServer) ReleaseLease(mac net.HardwareAddr, ip net.IP) error {
 	ds.stats.ActiveLeases--
 
 	// 记录到历史
-	ds.saveLeaseHistory(lease)
+	_ = ds.saveLeaseHistory(lease)
 
 	return nil
 }
@@ -1654,10 +1658,10 @@ func (ds *DHCPServer) ExpireLease(lease *Lease) {
 	ds.stats.ExpiredLeases++
 
 	// 记录到历史
-	ds.saveLeaseHistory(lease)
+	_ = ds.saveLeaseHistory(lease)
 }
 
-// 添加地址池管理功能
+// ValidatePool 地址池管理
 func (ds *DHCPServer) ValidatePool(pool *AddressPool) error {
 	// 验证网络配置
 	if pool.Network == nil {
@@ -1863,7 +1867,7 @@ func (ds *DHCPServer) SelectOptimalPool(clientMAC net.HardwareAddr) *AddressPool
 	defer ds.mu.RUnlock()
 
 	var bestPool *AddressPool
-	var lowestUtilization float64 = 1.0
+	var lowestUtilization = 1.0
 
 	for _, pool := range ds.pools {
 		if !pool.Enabled {
@@ -1983,7 +1987,7 @@ func (ds *DHCPServer) saveToDatabase(table, key string, data interface{}) error 
 	// 读取现有数据
 	database := make(map[string]map[string]interface{})
 	if fileData, err := os.ReadFile(dbFile); err == nil {
-		json.Unmarshal(fileData, &database)
+		_ = json.Unmarshal(fileData, &database)
 	}
 
 	// 确保表存在

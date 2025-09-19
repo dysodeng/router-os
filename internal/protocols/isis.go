@@ -395,7 +395,7 @@ func (im *ISISManager) AddArea(areaID []byte, level int) error {
 	}
 
 	im.Areas[areaKey] = area
-	im.logger.Info(fmt.Sprintf("添加IS-IS区域 %x (级别: %d)", areaID, level))
+	im.logger.Info("添加IS-IS区域 %x (级别: %d)", areaID, level)
 
 	return nil
 }
@@ -405,8 +405,7 @@ func (im *ISISManager) AddInterface(areaID []byte, ifName string, ipAddr net.IP,
 	im.mutex.Lock()
 	defer im.mutex.Unlock()
 
-	areaKey := string(areaID)
-	area, exists := im.Areas[areaKey]
+	area, exists := im.Areas[string(areaID)]
 	if !exists {
 		return fmt.Errorf("区域 %x 不存在", areaID)
 	}
@@ -427,7 +426,7 @@ func (im *ISISManager) AddInterface(areaID []byte, ifName string, ipAddr net.IP,
 	}
 
 	area.Interfaces[ifName] = intf
-	im.logger.Info(fmt.Sprintf("添加接口 %s 到IS-IS区域 %x", ifName, areaID))
+	im.logger.Info("添加接口 %s 到IS-IS区域 %x", ifName, areaID)
 
 	// 启动接口Hello发送
 	go im.sendHelloLoop(area, intf)
@@ -508,10 +507,12 @@ func (im *ISISManager) sendHello(area *ISISArea, intf *ISISInterface) {
 	})
 
 	// 这里应该实际发送Hello包，简化实现
-	im.logger.Debug(fmt.Sprintf("发送IS-IS Hello包到接口 %s (级别: %d)", intf.Name, intf.Level))
+	im.logger.Debug("发送IS-IS Hello包到接口 %s (级别: %d)", intf.Name, intf.Level)
 }
 
 // processHello 处理接收到的Hello包
+//
+//nolint:unused // 此函数为Hello包处理保留，将在网络包接收模块中使用
 func (im *ISISManager) processHello(hello *ISISHelloPDU, srcAddr net.IP, intf *ISISInterface) {
 	neighborKey := string(hello.SourceID)
 
@@ -528,7 +529,7 @@ func (im *ISISManager) processHello(hello *ISISHelloPDU, srcAddr net.IP, intf *I
 			Level:     int(hello.CircuitType),
 		}
 		intf.Neighbors[neighborKey] = neighbor
-		im.logger.Info(fmt.Sprintf("发现新IS-IS邻居 %x", hello.SourceID))
+		im.logger.Info("发现新IS-IS邻居 %x", hello.SourceID)
 	}
 
 	neighbor.HoldTime = hello.HoldTime
@@ -537,7 +538,7 @@ func (im *ISISManager) processHello(hello *ISISHelloPDU, srcAddr net.IP, intf *I
 	// 更新邻居状态
 	if neighbor.State == ISISNeighborInit {
 		neighbor.State = ISISNeighborUp
-		im.logger.Info(fmt.Sprintf("IS-IS邻居 %x 状态变为Up", hello.SourceID))
+		im.logger.Info("IS-IS邻居 %x 状态变为Up", hello.SourceID)
 
 		// 触发SPF计算
 		go im.runSPF()
@@ -556,7 +557,7 @@ func (im *ISISManager) checkNeighbors() {
 				if time.Since(neighbor.LastHello) > time.Duration(neighbor.HoldTime)*time.Second {
 					neighbor.State = ISISNeighborDown
 					delete(intf.Neighbors, key)
-					im.logger.Warn(fmt.Sprintf("IS-IS邻居 %x 超时，移除邻居关系", neighbor.SystemID))
+					im.logger.Warn("IS-IS邻居 %x 超时，移除邻居关系", neighbor.SystemID)
 
 					// 触发SPF计算
 					go im.runSPF()
@@ -665,7 +666,7 @@ func (im *ISISManager) refreshLSPs() {
 		area.LSPDB[lspKey] = lsp
 		area.mutex.Unlock()
 
-		im.logger.Debug(fmt.Sprintf("刷新IS-IS LSP %x", lsp.LSPID))
+		im.logger.Debug("刷新IS-IS LSP %x", lsp.LSPID)
 	}
 }
 
@@ -681,7 +682,7 @@ func (im *ISISManager) runSPF() {
 	defer im.mutex.RUnlock()
 
 	for _, area := range im.Areas {
-		im.logger.Info(fmt.Sprintf("运行IS-IS SPF算法 (区域: %x)", area.AreaID))
+		im.logger.Info("运行IS-IS SPF算法 (区域: %x)", area.AreaID)
 
 		// 构建拓扑图
 		graph := make(map[string]map[string]int)
@@ -798,9 +799,9 @@ func (im *ISISManager) installRoutes(area *ISISArea, distances map[string]int) {
 						}
 
 						// 添加到路由表
-						im.routingTable.AddRoute(*route)
-						im.logger.Debug(fmt.Sprintf("安装IS-IS路由: %s/%d (度量: %d)",
-							ipAddr, mask, route.Metric))
+						_ = im.routingTable.AddRoute(*route)
+						im.logger.Debug("安装IS-IS路由: %s/%d (度量: %d)",
+							ipAddr, mask, route.Metric)
 					}
 				}
 			}

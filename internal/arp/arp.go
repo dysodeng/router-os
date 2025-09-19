@@ -963,6 +963,8 @@ func (at *ARPTable) GetNeighborsByInterface(iface string) []*ARPEntry {
 }
 
 // parseARPPacket 解析ARP数据包
+//
+//nolint:unused // 此函数在processRawPacket中被使用
 func (at *ARPTable) parseARPPacket(data []byte) (*ARPPacket, error) {
 	if len(data) < ARPPacketSize {
 		return nil, fmt.Errorf("ARP数据包长度不足: %d < %d", len(data), ARPPacketSize)
@@ -1000,6 +1002,8 @@ func (at *ARPTable) parseARPPacket(data []byte) (*ARPPacket, error) {
 }
 
 // serializeARPPacket 序列化ARP数据包
+//
+//nolint:unused // 此函数为ARP包序列化保留，可能在发送ARP包时使用
 func (at *ARPTable) serializeARPPacket(packet *ARPPacket) []byte {
 	data := make([]byte, ARPPacketSize)
 
@@ -1023,6 +1027,8 @@ func (at *ARPTable) serializeARPPacket(packet *ARPPacket) []byte {
 }
 
 // processARPPacket 处理接收到的ARP数据包
+//
+//nolint:unused // 此函数在processRawPacket中被使用
 func (at *ARPTable) processARPPacket(packet *ARPPacket, iface string) error {
 	senderIP := net.IP(packet.SenderProtocolAddr[:])
 	senderMAC := net.HardwareAddr(packet.SenderHardwareAddr[:])
@@ -1041,6 +1047,8 @@ func (at *ARPTable) processARPPacket(packet *ARPPacket, iface string) error {
 }
 
 // handleARPRequest 处理ARP请求
+//
+//nolint:unused // 此函数在processARPPacket中被使用
 func (at *ARPTable) handleARPRequest(senderIP net.IP, senderMAC net.HardwareAddr, targetIP net.IP, iface string) error {
 	// 更新发送方的ARP条目
 	_ = at.AddEntry(senderIP, senderMAC, iface)
@@ -1060,7 +1068,9 @@ func (at *ARPTable) handleARPRequest(senderIP net.IP, senderMAC net.HardwareAddr
 	return nil
 }
 
-// sendARPReply 发送ARP响应
+// sendARPReply 发送ARP回复
+//
+//nolint:unused // 此函数在handleARPRequest中被使用
 func (at *ARPTable) sendARPReply(targetIP net.IP, targetMAC net.HardwareAddr, sourceIP net.IP, ifaceInfo *InterfaceInfo) error {
 	// 创建ARP响应包
 	packet := &ARPPacket{
@@ -1108,6 +1118,8 @@ func (at *ARPTable) createRawSocket() error {
 }
 
 // htons 主机字节序转网络字节序
+//
+//nolint:unused // 此函数为网络字节序转换保留，可能在网络包处理时使用
 func htons(i uint16) uint16 {
 	return (i<<8)&0xff00 | i>>8
 }
@@ -1122,10 +1134,11 @@ func (at *ARPTable) startSystemARPMonitor() error {
 // packetListenerLoop 数据包监听循环
 func (at *ARPTable) packetListenerLoop() {
 	// 在 macOS 上不使用原始套接字，直接返回
-	return
 }
 
 // processRawPacket 处理原始数据包
+//
+//nolint:unused // 此函数为原始包处理保留，在网络监听中使用
 func (at *ARPTable) processRawPacket(data []byte) {
 	// 检查是否是以太网帧
 	if len(data) < 14 {
@@ -1151,7 +1164,7 @@ func (at *ARPTable) processRawPacket(data []byte) {
 	}
 
 	// 处理ARP数据包
-	at.processARPPacket(packet, "")
+	_ = at.processARPPacket(packet, "")
 }
 
 // systemARPMonitorLoop 系统ARP表监控循环
@@ -1173,7 +1186,7 @@ func (at *ARPTable) systemARPMonitorLoop() {
 					if parsedIP := net.ParseIP(ip); parsedIP != nil {
 						if parsedMAC, err := net.ParseMAC(mac); err == nil {
 							// 更新ARP表
-							at.HandleARPReply(parsedIP, parsedMAC, "")
+							_ = at.HandleARPReply(parsedIP, parsedMAC, "")
 						}
 					}
 				}

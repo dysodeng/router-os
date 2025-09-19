@@ -330,7 +330,7 @@ type OSPFNeighbor struct {
 	DBSummary        []*OSPFLSA        // 数据库摘要
 	LSRequestList    []*OSPFLSA        // LSA请求列表
 	LSRetransList    []*OSPFLSA        // LSA重传列表
-	mu               sync.RWMutex      // 读写锁
+	mu               sync.RWMutex      //nolint:unused // 为邻居状态同步保留
 }
 
 // OSPFManager OSPF协议管理器
@@ -447,7 +447,7 @@ func (om *OSPFManager) initializeInterfaces() error {
 		}
 
 		om.areas[OSPFBackboneArea].Interfaces[iface.Name] = ospfIface
-		om.logger.Info(fmt.Sprintf("OSPF接口 %s 已初始化", iface.Name))
+		om.logger.Info("OSPF接口 %s 已初始化", iface.Name)
 	}
 
 	return nil
@@ -458,14 +458,11 @@ func (om *OSPFManager) helloTimer() {
 	ticker := time.NewTicker(OSPFHelloInterval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !om.IsRunning() {
-				return
-			}
-			om.sendHelloPackets()
+	for range ticker.C {
+		if !om.IsRunning() {
+			return
 		}
+		om.sendHelloPackets()
 	}
 }
 
@@ -505,7 +502,7 @@ func (om *OSPFManager) sendHelloPacket(iface *OSPFInterface) {
 	}
 	iface.mu.RUnlock()
 
-	om.logger.Debug(fmt.Sprintf("发送Hello数据包到接口 %s", iface.Name))
+	om.logger.Debug("发送Hello数据包到接口 %s", iface.Name)
 	// 这里应该实际发送数据包，简化实现
 }
 
@@ -529,14 +526,14 @@ func (om *OSPFManager) ProcessHelloPacket(packet *OSPFHelloPacket, sourceIP net.
 
 	// 检查网络掩码
 	if packet.NetworkMask.String() != targetInterface.NetworkMask.String() {
-		om.logger.Warn(fmt.Sprintf("Hello数据包网络掩码不匹配: %s", sourceIP))
+		om.logger.Warn("Hello数据包网络掩码不匹配: %s", sourceIP)
 		return nil
 	}
 
 	// 检查Hello间隔和死亡间隔
 	if time.Duration(packet.HelloInterval)*time.Second != targetInterface.HelloInterval ||
 		time.Duration(packet.RouterDeadInterval)*time.Second != targetInterface.DeadInterval {
-		om.logger.Warn(fmt.Sprintf("Hello数据包定时器参数不匹配: %s", sourceIP))
+		om.logger.Warn("Hello数据包定时器参数不匹配: %s", sourceIP)
 		return nil
 	}
 
@@ -556,7 +553,7 @@ func (om *OSPFManager) ProcessHelloPacket(packet *OSPFHelloPacket, sourceIP net.
 			LastSeen:         time.Now(),
 		}
 		targetInterface.Neighbors[neighborKey] = neighbor
-		om.logger.Info(fmt.Sprintf("发现新邻居: %s", sourceIP))
+		om.logger.Info("发现新邻居: %s", sourceIP)
 	} else {
 		// 更新现有邻居
 		neighbor.LastSeen = time.Now()
@@ -571,7 +568,7 @@ func (om *OSPFManager) ProcessHelloPacket(packet *OSPFHelloPacket, sourceIP net.
 		if neighborIP.Equal(myIP) {
 			if neighbor.State == NeighborInit {
 				neighbor.State = NeighborTwoWay
-				om.logger.Info(fmt.Sprintf("邻居 %s 状态变为TwoWay", sourceIP))
+				om.logger.Info("邻居 %s 状态变为TwoWay", sourceIP)
 			}
 			break
 		}
@@ -585,14 +582,11 @@ func (om *OSPFManager) lsaAging() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !om.IsRunning() {
-				return
-			}
-			om.ageLSAs()
+	for range ticker.C {
+		if !om.IsRunning() {
+			return
 		}
+		om.ageLSAs()
 	}
 }
 
@@ -607,7 +601,7 @@ func (om *OSPFManager) ageLSAs() {
 			lsa.Age++
 			if time.Duration(lsa.Age)*time.Second >= OSPFLSAMaxAge {
 				delete(area.LSDB, lsaKey)
-				om.logger.Debug(fmt.Sprintf("LSA %s 已过期并删除", lsaKey))
+				om.logger.Debug("LSA %s 已过期并删除", lsaKey)
 			}
 		}
 		area.mu.Unlock()
@@ -619,14 +613,11 @@ func (om *OSPFManager) spfCalculation() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !om.IsRunning() {
-				return
-			}
-			om.calculateSPF()
+	for range ticker.C {
+		if !om.IsRunning() {
+			return
 		}
+		om.calculateSPF()
 	}
 }
 
@@ -636,7 +627,7 @@ func (om *OSPFManager) calculateSPF() {
 	defer om.mu.RUnlock()
 
 	for areaID, area := range om.areas {
-		om.logger.Debug(fmt.Sprintf("开始计算区域 %d 的SPF", areaID))
+		om.logger.Debug("开始计算区域 %d 的SPF", areaID)
 		om.dijkstra(area)
 	}
 }
@@ -795,7 +786,7 @@ func (om *OSPFManager) updateRoutingTableFromSPF(area *OSPFArea, distances map[u
 		}
 
 		// 添加到路由表
-		om.routingTable.AddRoute(*route)
+		_ = om.routingTable.AddRoute(*route)
 	}
 }
 
@@ -888,14 +879,11 @@ func (om *OSPFManager) neighborStateMachine() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !om.IsRunning() {
-				return
-			}
-			om.processNeighborStates()
+	for range ticker.C {
+		if !om.IsRunning() {
+			return
 		}
+		om.processNeighborStates()
 	}
 }
 
@@ -910,7 +898,7 @@ func (om *OSPFManager) processNeighborStates() {
 			for addr, neighbor := range iface.Neighbors {
 				// 检查邻居超时
 				if now.Sub(neighbor.LastSeen) > iface.DeadInterval {
-					om.logger.Info(fmt.Sprintf("邻居 %s 超时，状态从 %d 变为 Down", addr, neighbor.State))
+					om.logger.Info("邻居 %s 超时，状态从 %d 变为 Down", addr, neighbor.State)
 					neighbor.State = NeighborDown
 					// 清理邻居相关的LSA
 					om.cleanupNeighborLSAs(neighbor)
@@ -932,29 +920,29 @@ func (om *OSPFManager) processNeighborStateTransition(neighbor *OSPFNeighbor, if
 		// 如果在Hello包中看到自己的Router ID，转换到TwoWay状态
 		if om.isRouterIDInNeighborList(neighbor) {
 			neighbor.State = NeighborTwoWay
-			om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Init -> TwoWay", neighbor.IPAddress.String()))
+			om.logger.Info("邻居 %s 状态转换: Init -> TwoWay", neighbor.IPAddress.String())
 
 			// 如果需要建立邻接关系，转换到ExStart状态
 			if om.shouldEstablishAdjacency(neighbor, iface) {
 				neighbor.State = NeighborExStart
-				om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: TwoWay -> ExStart", neighbor.IPAddress.String()))
+				om.logger.Info("邻居 %s 状态转换: TwoWay -> ExStart", neighbor.IPAddress.String())
 			}
 		}
 	case NeighborExStart:
 		// 开始数据库描述交换
 		if om.startDatabaseExchange(neighbor) {
 			neighbor.State = NeighborExchange
-			om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: ExStart -> Exchange", neighbor.IPAddress.String()))
+			om.logger.Info("邻居 %s 状态转换: ExStart -> Exchange", neighbor.IPAddress.String())
 		}
 	case NeighborExchange:
 		// 检查数据库描述交换是否完成
 		if om.isDatabaseExchangeComplete(neighbor) {
 			if len(neighbor.LSRequestList) > 0 {
 				neighbor.State = NeighborLoading
-				om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Exchange -> Loading", neighbor.IPAddress.String()))
+				om.logger.Info("邻居 %s 状态转换: Exchange -> Loading", neighbor.IPAddress.String())
 			} else {
 				neighbor.State = NeighborFull
-				om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Exchange -> Full", neighbor.IPAddress.String()))
+				om.logger.Info("邻居 %s 状态转换: Exchange -> Full", neighbor.IPAddress.String())
 				om.triggerSPFCalculation()
 			}
 		}
@@ -962,7 +950,7 @@ func (om *OSPFManager) processNeighborStateTransition(neighbor *OSPFNeighbor, if
 		// 检查LSA请求是否完成
 		if len(neighbor.LSRequestList) == 0 {
 			neighbor.State = NeighborFull
-			om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Loading -> Full", neighbor.IPAddress.String()))
+			om.logger.Info("邻居 %s 状态转换: Loading -> Full", neighbor.IPAddress.String())
 			om.triggerSPFCalculation()
 		}
 	}
@@ -973,14 +961,11 @@ func (om *OSPFManager) interfaceStateMachine() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !om.IsRunning() {
-				return
-			}
-			om.processInterfaceStates()
+	for range ticker.C {
+		if !om.IsRunning() {
+			return
 		}
+		om.processInterfaceStates()
 	}
 }
 
@@ -1003,7 +988,7 @@ func (om *OSPFManager) processInterfaceStates() {
 		for name, ospfIface := range area.Interfaces {
 			if !activeMap[name] {
 				// 接口已关闭，清理相关信息
-				om.logger.Info(fmt.Sprintf("接口 %s 已关闭，清理OSPF信息", name))
+				om.logger.Info("接口 %s 已关闭，清理OSPF信息", name)
 				om.cleanupInterface(ospfIface)
 				delete(area.Interfaces, name)
 			}
@@ -1030,14 +1015,11 @@ func (om *OSPFManager) lsaFloodingProcess() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !om.IsRunning() {
-				return
-			}
-			om.processLSAFlooding()
+	for range ticker.C {
+		if !om.IsRunning() {
+			return
 		}
+		om.processLSAFlooding()
 	}
 }
 
@@ -1079,7 +1061,7 @@ func (om *OSPFManager) generateRouterLSA() {
 		lsaKey := fmt.Sprintf("%d-%d", routerLSA.Type, routerLSA.LinkStateID)
 		area.LSDB[lsaKey] = routerLSA
 
-		om.logger.Info(fmt.Sprintf("生成路由器LSA，区域 %d", area.AreaID))
+		om.logger.Info("生成路由器LSA，区域 %d", area.AreaID)
 
 		// 泛洪LSA
 		om.floodLSA(routerLSA, area)
@@ -1114,7 +1096,7 @@ func (om *OSPFManager) triggerSPFCalculation() {
 
 func (om *OSPFManager) cleanupNeighborLSAs(neighbor *OSPFNeighbor) {
 	// 清理邻居相关的LSA
-	om.logger.Debug(fmt.Sprintf("清理邻居 %s 的LSA", neighbor.IPAddress.String()))
+	om.logger.Debug("清理邻居 %s 的LSA", neighbor.IPAddress.String())
 }
 
 func (om *OSPFManager) cleanupInterface(iface *OSPFInterface) {
@@ -1122,7 +1104,7 @@ func (om *OSPFManager) cleanupInterface(iface *OSPFInterface) {
 	for _, neighbor := range iface.Neighbors {
 		neighbor.State = NeighborDown
 	}
-	om.logger.Debug(fmt.Sprintf("清理接口 %s 的OSPF信息", iface.Name))
+	om.logger.Debug("清理接口 %s 的OSPF信息", iface.Name)
 }
 
 func (om *OSPFManager) addNewInterface(iface *interfaces.Interface) {
@@ -1140,7 +1122,7 @@ func (om *OSPFManager) addNewInterface(iface *interfaces.Interface) {
 	}
 
 	om.areas[OSPFBackboneArea].Interfaces[iface.Name] = ospfIface
-	om.logger.Info(fmt.Sprintf("添加新的OSPF接口: %s", iface.Name))
+	om.logger.Info("添加新的OSPF接口: %s", iface.Name)
 }
 
 func (om *OSPFManager) shouldFloodLSA(lsa *OSPFLSA) bool {
@@ -1150,7 +1132,7 @@ func (om *OSPFManager) shouldFloodLSA(lsa *OSPFLSA) bool {
 
 func (om *OSPFManager) floodLSA(lsa *OSPFLSA, area *OSPFArea) {
 	// 简化实现，实际应该向所有邻居发送LSA
-	om.logger.Debug(fmt.Sprintf("泛洪LSA类型 %d，区域 %d", lsa.Type, area.AreaID))
+	om.logger.Debug("泛洪LSA类型 %d，区域 %d", lsa.Type, area.AreaID)
 }
 
 func (om *OSPFManager) buildRouterLSAData(area *OSPFArea) []byte {

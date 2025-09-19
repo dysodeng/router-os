@@ -117,7 +117,7 @@ func (cli *CLI) handlePacketSend(args []string) {
 
 	// 处理数据包
 	fmt.Println("\n开始处理数据包...")
-	processor.ProcessPacket(packet)
+	_ = processor.ProcessPacket(packet)
 
 	fmt.Println("数据包处理完成")
 }
@@ -239,7 +239,9 @@ func (cli *CLI) Start() {
 		fmt.Printf("初始化CLI失败: %v\n", err)
 		return
 	}
-	defer cli.rl.Close()
+	defer func() {
+		_ = cli.rl.Close()
+	}()
 
 	for cli.running {
 		line, err := cli.rl.Readline()
@@ -752,7 +754,7 @@ func (cli *CLI) handleISISCommand(args []string) {
 		}
 	case "stop":
 		if cli.isisManager != nil {
-			cli.isisManager.Stop()
+			_ = cli.isisManager.Stop()
 			fmt.Println("IS-IS已停止")
 		} else {
 			fmt.Println("IS-IS管理器未初始化")

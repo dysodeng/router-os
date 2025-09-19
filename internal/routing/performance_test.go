@@ -23,7 +23,7 @@ func BenchmarkOriginalTableLookup(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			ip := testIPs[i%len(testIPs)]
-			table.LookupRoute(ip)
+			_, _ = table.LookupRoute(ip)
 			i++
 		}
 	})
@@ -44,7 +44,7 @@ func BenchmarkOptimizedTableLookup(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			ip := testIPs[i%len(testIPs)]
-			table.LookupRoute(ip)
+			_, _ = table.LookupRoute(ip)
 			i++
 		}
 	})
@@ -138,7 +138,7 @@ func TestCacheEffectiveness(t *testing.T) {
 
 	// 第一轮查找（填充缓存）
 	for _, ip := range hotIPs {
-		table.LookupRoute(ip)
+		_, _ = table.LookupRoute(ip)
 	}
 
 	// 第二轮查找（测试缓存效果）
@@ -147,10 +147,10 @@ func TestCacheEffectiveness(t *testing.T) {
 		// 80%的查询访问热点IP，20%访问冷门IP
 		if i%5 < 4 {
 			ip := hotIPs[i%len(hotIPs)]
-			table.LookupRoute(ip)
+			_, _ = table.LookupRoute(ip)
 		} else {
 			ip := coldIPs[i%len(coldIPs)]
-			table.LookupRoute(ip)
+			_, _ = table.LookupRoute(ip)
 		}
 	}
 	duration := time.Since(start)
@@ -215,10 +215,7 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			for j := 0; j < 1000; j++ {
 				ip := testIPs[j%len(testIPs)]
-				_, err := table.LookupRoute(ip)
-				if err != nil {
-					// 某些查找失败是正常的
-				}
+				_, _ = table.LookupRoute(ip)
 			}
 			done <- true
 		}(i)
@@ -253,7 +250,7 @@ func setupTestRoutes(table *Table, count int) {
 			Age:         time.Now(),
 		}
 
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 }
 
@@ -275,7 +272,7 @@ func setupOptimizedTestRoutes(table *OptimizedTable, count int) {
 			Age:         time.Now(),
 		}
 
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 }
 
@@ -325,7 +322,7 @@ func benchmarkOriginalTable(routeCount, lookupCount int) time.Duration {
 
 	start := time.Now()
 	for _, ip := range testIPs {
-		table.LookupRoute(ip)
+		_, _ = table.LookupRoute(ip)
 	}
 	return time.Since(start) / time.Duration(lookupCount)
 }
@@ -338,7 +335,7 @@ func benchmarkOptimizedTable(routeCount, lookupCount int) time.Duration {
 
 	start := time.Now()
 	for _, ip := range testIPs {
-		table.LookupRoute(ip)
+		_, _ = table.LookupRoute(ip)
 	}
 	return time.Since(start) / time.Duration(lookupCount)
 }

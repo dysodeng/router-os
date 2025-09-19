@@ -61,7 +61,7 @@ func performanceComparison(routeCount int) {
 	fmt.Print("  原始实现: ")
 	originalTime := measureLookupTime(func() {
 		for _, ip := range testIPs {
-			originalTable.LookupRoute(ip)
+			_, _ = originalTable.LookupRoute(ip)
 		}
 	})
 
@@ -69,7 +69,7 @@ func performanceComparison(routeCount int) {
 	fmt.Print("  优化实现: ")
 	optimizedTime := measureLookupTime(func() {
 		for _, ip := range testIPs {
-			optimizedTable.LookupRoute(ip)
+			_, _ = optimizedTable.LookupRoute(ip)
 		}
 	})
 
@@ -103,7 +103,7 @@ func cacheEffectivenessDemo(routeCount int) {
 			} else { // 20%访问普通IP
 				ip = coldIPs[i%len(coldIPs)]
 			}
-			table.LookupRoute(ip)
+			_, _ = table.LookupRoute(ip)
 		}
 	})
 
@@ -116,7 +116,7 @@ func cacheEffectivenessDemo(routeCount int) {
 			} else { // 20%访问普通IP
 				ip = coldIPs[i%len(coldIPs)]
 			}
-			table.LookupRoute(ip)
+			_, _ = table.LookupRoute(ip)
 		}
 	})
 
@@ -155,7 +155,7 @@ func concurrencyDemo() {
 		go func(id int) {
 			for j := 0; j < lookupsPerGoroutine; j++ {
 				ip := testIPs[j%len(testIPs)]
-				table.LookupRoute(ip)
+				_, _ = table.LookupRoute(ip)
 			}
 			done <- true
 		}(i)
@@ -247,7 +247,7 @@ func setupOriginalRoutes(table *routing.Table, count int) {
 			Age:         time.Now(),
 		}
 
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 }
 
@@ -265,7 +265,7 @@ func setupOptimizedRoutes(table *routing.OptimizedTable, count int) {
 			Age:         time.Now(),
 		}
 
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 }
 
@@ -296,7 +296,7 @@ func addEnterpriseRoutes(table *routing.OptimizedTable) {
 			Type:        routing.RouteTypeStatic,
 			Age:         time.Now(),
 		}
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 
 	// 添加外网路由
@@ -313,7 +313,7 @@ func addEnterpriseRoutes(table *routing.OptimizedTable) {
 			Age:         time.Now(),
 			TTL:         30 * time.Minute,
 		}
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 
 	// 添加默认路由
@@ -326,7 +326,7 @@ func addEnterpriseRoutes(table *routing.OptimizedTable) {
 		Type:        routing.RouteTypeDefault,
 		Age:         time.Now(),
 	}
-	table.AddRoute(defaultRoute)
+	_ = table.AddRoute(defaultRoute)
 }
 
 func simulateRealTraffic(table *routing.OptimizedTable) {
@@ -359,6 +359,6 @@ func simulateRealTraffic(table *routing.OptimizedTable) {
 			ip = internetIPs[rand.Intn(len(internetIPs))]
 		}
 
-		table.LookupRoute(ip)
+		_, _ = table.LookupRoute(ip)
 	}
 }

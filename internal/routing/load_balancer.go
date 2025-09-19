@@ -90,7 +90,7 @@ type LoadBalancer struct {
 	currentIndex int64
 
 	// weightedIndex 加权轮询索引
-	weightedIndex int
+	weightedIndex int //nolint:unused // 为加权轮询算法保留
 
 	// weightedCurrentWeights 当前权重计数器
 	weightedCurrentWeights []int

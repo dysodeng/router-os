@@ -131,7 +131,7 @@ func (lb *LoadBalancer) selectWeightedRoundRobin(routes []RouteEntry) (*RouteEnt
 
 	// 生成随机数
 	randBytes := make([]byte, 4)
-	rand.Read(randBytes)
+	_, _ = rand.Read(randBytes)
 	randNum := int(randBytes[0])<<24 | int(randBytes[1])<<16 | int(randBytes[2])<<8 | int(randBytes[3])
 	if randNum < 0 {
 		randNum = -randNum
@@ -188,7 +188,7 @@ func (lb *LoadBalancer) selectRandom(routes []RouteEntry) (*RouteEntry, error) {
 	}
 
 	randBytes := make([]byte, 4)
-	rand.Read(randBytes)
+	_, _ = rand.Read(randBytes)
 	randNum := int(randBytes[0])<<24 | int(randBytes[1])<<16 | int(randBytes[2])<<8 | int(randBytes[3])
 	if randNum < 0 {
 		randNum = -randNum

@@ -392,12 +392,12 @@ func (pc *PacketCapture) Stop() error {
 
 	// 关闭原始套接字
 	if pc.rawSocket > 0 {
-		syscall.Close(pc.rawSocket)
+		_ = syscall.Close(pc.rawSocket)
 		pc.rawSocket = 0
 	}
 
 	if pc.conn != nil {
-		pc.conn.Close()
+		_ = pc.conn.Close()
 		pc.conn = nil
 	}
 
@@ -526,13 +526,13 @@ func (pc *PacketCapture) createRawSocket() error {
 
 		// 设置套接字选项
 		if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 1); err != nil {
-			syscall.Close(fd)
+			_ = syscall.Close(fd)
 			return fmt.Errorf("设置套接字选项失败: %v", err)
 		}
 
 		// 设置非阻塞模式
 		if err := syscall.SetNonblock(fd, true); err != nil {
-			syscall.Close(fd)
+			_ = syscall.Close(fd)
 			return fmt.Errorf("设置非阻塞模式失败: %v", err)
 		}
 
@@ -585,8 +585,8 @@ func (pc *PacketCapture) parseRawPacket(data []byte) *packet.Packet {
 			pkt.Destination = net.IP(data[16:20])
 			pkt.TTL = int(data[8])
 		}
-	} else if version == 6 {
-		// IPv6数据包解析
+	} else {
+		// IPv6数据包解析 (version == 6, 因为前面已经过滤了其他版本)
 		pkt.Type = packet.PacketTypeIPv6
 		if len(data) >= 40 {
 			pkt.Source = net.IP(data[8:24])
@@ -758,7 +758,7 @@ func (pc *PacketCapture) updateStatsLoop() {
 	defer ticker.Stop()
 
 	var lastPackets, lastBytes uint64
-	var lastTime time.Time = time.Now()
+	var lastTime = time.Now()
 
 	for {
 		select {

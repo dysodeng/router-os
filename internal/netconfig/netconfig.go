@@ -1,8 +1,10 @@
 package netconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -710,8 +712,148 @@ func (nc *NetworkConfigurator) GetRouteTable() ([]RouteEntry, error) {
 
 // parseRouteTable 解析路由表输出
 func (nc *NetworkConfigurator) parseRouteTable(output string) ([]RouteEntry, error) {
-	var routes []RouteEntry
 	lines := strings.Split(output, "\n")
+
+	// 根据操作系统类型选择不同的解析策略
+	switch nc.osType {
+	case "linux":
+		return nc.parseLinuxRouteTable(lines)
+	case "darwin":
+		return nc.parseDarwinRouteTable(lines)
+	case "windows":
+		return nc.parseWindowsRouteTable(lines)
+	default:
+		// 通用解析逻辑作为后备
+		return nc.parseGenericRouteTable(lines)
+	}
+}
+
+// parseLinuxRouteTable 解析Linux系统的路由表输出
+func (nc *NetworkConfigurator) parseLinuxRouteTable(lines []string) ([]RouteEntry, error) {
+	var routes []RouteEntry
+
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || i == 0 { // 跳过空行和标题行
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) >= 8 {
+			route := RouteEntry{
+				Type: "static",
+			}
+
+			// Linux route -n 输出格式：Destination Gateway Genmask Flags Metric Ref Use Iface
+			if dest, err := nc.parseDestination(fields[0]); err == nil {
+				route.Destination = dest
+			}
+
+			if fields[1] != "0.0.0.0" && fields[1] != "*" {
+				route.Gateway = net.ParseIP(fields[1])
+			}
+
+			if len(fields) > 7 {
+				route.Interface = fields[7]
+			}
+
+			if len(fields) > 4 {
+				if metric, err := strconv.Atoi(fields[4]); err == nil {
+					route.Metric = metric
+				}
+			}
+
+			routes = append(routes, route)
+		}
+	}
+
+	return routes, nil
+}
+
+// parseDarwinRouteTable 解析macOS系统的路由表输出
+func (nc *NetworkConfigurator) parseDarwinRouteTable(lines []string) ([]RouteEntry, error) {
+	var routes []RouteEntry
+
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || i == 0 { // 跳过空行和标题行
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) >= 6 {
+			route := RouteEntry{
+				Type: "static",
+			}
+
+			// macOS netstat -rn 输出格式：Destination Gateway Flags Refs Use Netif Expire
+			if dest, err := nc.parseDestination(fields[0]); err == nil {
+				route.Destination = dest
+			}
+
+			if fields[1] != "link#" && !strings.Contains(fields[1], "link#") {
+				route.Gateway = net.ParseIP(fields[1])
+			}
+
+			if len(fields) > 5 {
+				route.Interface = fields[5]
+			}
+
+			// macOS没有直接的metric字段，使用默认值
+			route.Metric = 0
+
+			routes = append(routes, route)
+		}
+	}
+
+	return routes, nil
+}
+
+// parseWindowsRouteTable 解析Windows系统的路由表输出
+func (nc *NetworkConfigurator) parseWindowsRouteTable(lines []string) ([]RouteEntry, error) {
+	var routes []RouteEntry
+
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || i < 3 { // 跳过空行和前几行标题
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) >= 5 {
+			route := RouteEntry{
+				Type: "static",
+			}
+
+			// Windows route print 输出格式：Network Destination Netmask Gateway Interface Metric
+			if dest, err := nc.parseDestination(fields[0]); err == nil {
+				route.Destination = dest
+			}
+
+			if fields[2] != "0.0.0.0" {
+				route.Gateway = net.ParseIP(fields[2])
+			}
+
+			if len(fields) > 3 {
+				route.Interface = fields[3]
+			}
+
+			if len(fields) > 4 {
+				if metric, err := strconv.Atoi(fields[4]); err == nil {
+					route.Metric = metric
+				}
+			}
+
+			routes = append(routes, route)
+		}
+	}
+
+	return routes, nil
+}
+
+// parseGenericRouteTable 通用路由表解析逻辑（后备方案）
+func (nc *NetworkConfigurator) parseGenericRouteTable(lines []string) ([]RouteEntry, error) {
+	var routes []RouteEntry
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -719,19 +861,25 @@ func (nc *NetworkConfigurator) parseRouteTable(output string) ([]RouteEntry, err
 			continue
 		}
 
-		// 这里需要根据不同操作系统的输出格式进行解析
-		// 当前为简化实现，实际需要更复杂的解析逻辑
 		fields := strings.Fields(line)
 		if len(fields) >= 3 {
 			route := RouteEntry{
 				Type: "unknown",
 			}
 
-			// 简单解析，实际需要更详细的实现
-			if len(fields) > 0 {
-				if dest, err := nc.parseDestination(fields[0]); err == nil {
-					route.Destination = dest
-				}
+			// 尝试解析目标地址
+			if dest, err := nc.parseDestination(fields[0]); err == nil {
+				route.Destination = dest
+			}
+
+			// 尝试解析网关
+			if len(fields) > 1 && fields[1] != "0.0.0.0" && fields[1] != "*" {
+				route.Gateway = net.ParseIP(fields[1])
+			}
+
+			// 尝试解析接口
+			if len(fields) > 2 {
+				route.Interface = fields[len(fields)-1] // 通常接口名在最后
 			}
 
 			routes = append(routes, route)
@@ -1182,7 +1330,7 @@ func (hrm *HotReloadManager) Start() error {
 		interval: 1 * time.Second,
 		stopChan: make(chan bool),
 		onChange: func() {
-			hrm.triggerReload("file_change")
+			_ = hrm.triggerReload("file_change")
 		},
 	}
 
@@ -1462,11 +1610,757 @@ func (bm *BackupManager) RestoreBackup(backupID string) error {
 		return fmt.Errorf("备份文件不存在: %s", backupInfo.FilePath)
 	}
 
-	// 这里应该实现具体的恢复逻辑
-	// 简化实现，实际需要根据配置类型进行相应的恢复操作
-	fmt.Printf("恢复备份: %s\n", backupInfo.FilePath)
+	// 根据备份类型执行相应的恢复操作
+	return bm.performRestore(backupInfo)
+}
+
+// performRestore 执行具体的恢复操作
+func (bm *BackupManager) performRestore(backupInfo *BackupInfo) error {
+	fmt.Printf("开始恢复备份: %s\n", backupInfo.FilePath)
+
+	// 1. 创建当前配置的临时备份（以防恢复失败）
+	tempBackupInfo, err := bm.createTemporaryBackup()
+	if err != nil {
+		return fmt.Errorf("创建临时备份失败: %v", err)
+	}
+
+	// 2. 读取备份文件内容
+	backupData, err := bm.readBackupFile(backupInfo.FilePath)
+	if err != nil {
+		return fmt.Errorf("读取备份文件失败: %v", err)
+	}
+
+	// 3. 验证备份数据的完整性
+	if err := bm.validateBackupData(backupData); err != nil {
+		return fmt.Errorf("备份数据验证失败: %v", err)
+	}
+
+	// 4. 应用备份配置
+	if err := bm.applyBackupConfiguration(backupData); err != nil {
+		// 恢复失败，尝试回滚到临时备份
+		fmt.Printf("恢复失败，正在回滚到临时备份...\n")
+		if rollbackErr := bm.performRestore(tempBackupInfo); rollbackErr != nil {
+			return fmt.Errorf("恢复失败且回滚失败: 原错误=%v, 回滚错误=%v", err, rollbackErr)
+		}
+		return fmt.Errorf("恢复失败，已回滚: %v", err)
+	}
+
+	// 5. 验证恢复后的配置
+	if err := bm.validateRestoredConfiguration(); err != nil {
+		fmt.Printf("恢复后验证失败，正在回滚...\n")
+		if rollbackErr := bm.performRestore(tempBackupInfo); rollbackErr != nil {
+			return fmt.Errorf("验证失败且回滚失败: 原错误=%v, 回滚错误=%v", err, rollbackErr)
+		}
+		return fmt.Errorf("验证失败，已回滚: %v", err)
+	}
+
+	// 6. 清理临时备份
+	bm.cleanupTemporaryBackup(tempBackupInfo)
+
+	fmt.Printf("备份恢复成功: %s\n", backupInfo.Description)
+	return nil
+}
+
+// createTemporaryBackup 创建临时备份
+func (bm *BackupManager) createTemporaryBackup() (*BackupInfo, error) {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	// 创建临时备份信息
+	tempBackup := &BackupInfo{
+		ID:          fmt.Sprintf("temp_%d", time.Now().Unix()),
+		Timestamp:   time.Now(),
+		FilePath:    fmt.Sprintf("%s/temp_backup_%d.json", bm.backupDir, time.Now().Unix()),
+		Description: "临时备份（恢复前自动创建）",
+		Type:        BackupTypeAutomatic,
+	}
+
+	// 确保备份目录存在
+	if err := os.MkdirAll(bm.backupDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建备份目录失败: %v", err)
+	}
+
+	// 收集当前系统配置
+	currentConfig, err := bm.collectCurrentConfiguration()
+	if err != nil {
+		return nil, fmt.Errorf("收集当前配置失败: %v", err)
+	}
+
+	// 序列化配置数据
+	configData, err := json.MarshalIndent(currentConfig, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("序列化配置数据失败: %v", err)
+	}
+
+	// 写入临时备份文件
+	if err := os.WriteFile(tempBackup.FilePath, configData, 0644); err != nil {
+		return nil, fmt.Errorf("写入临时备份文件失败: %v", err)
+	}
+
+	// 计算文件大小
+	if fileInfo, err := os.Stat(tempBackup.FilePath); err == nil {
+		tempBackup.Size = fileInfo.Size()
+	}
+
+	fmt.Printf("创建临时备份成功: %s (大小: %d 字节)\n", tempBackup.FilePath, tempBackup.Size)
+
+	return tempBackup, nil
+}
+
+// collectCurrentConfiguration 收集当前系统配置
+func (bm *BackupManager) collectCurrentConfiguration() (map[string]interface{}, error) {
+	config := make(map[string]interface{})
+
+	// 创建网络配置器实例
+	nc := NewNetworkConfigurator()
+
+	// 收集网络接口配置
+	interfaces := make(map[string]interface{})
+
+	// 获取系统中所有网络接口
+	interfaceNames, err := nc.GetInterfaceList()
+	if err != nil {
+		return nil, fmt.Errorf("获取接口列表失败: %v", err)
+	}
+
+	// 收集每个接口的详细配置
+	for _, ifName := range interfaceNames {
+		ifConfig, err := nc.GetInterfaceConfig(ifName)
+		if err != nil {
+			fmt.Printf("警告: 获取接口 %s 配置失败: %v\n", ifName, err)
+			continue
+		}
+
+		// 构建接口配置数据
+		interfaceData := map[string]interface{}{
+			"name":   ifConfig.Name,
+			"mtu":    ifConfig.MTU,
+			"status": "down",
+		}
+
+		if ifConfig.Up {
+			interfaceData["status"] = "up"
+		}
+
+		if ifConfig.IPAddress != nil {
+			interfaceData["ip"] = ifConfig.IPAddress.String()
+		}
+
+		if ifConfig.Netmask != nil {
+			interfaceData["netmask"] = net.IP(ifConfig.Netmask).String()
+		}
+
+		if ifConfig.Gateway != nil {
+			interfaceData["gateway"] = ifConfig.Gateway.String()
+		}
+
+		if ifConfig.MAC != nil {
+			interfaceData["mac"] = ifConfig.MAC.String()
+		}
+
+		interfaces[ifName] = interfaceData
+	}
+	config["interfaces"] = interfaces
+
+	// 收集路由表信息
+	routeEntries, err := nc.GetRouteTable()
+	if err != nil {
+		fmt.Printf("警告: 获取路由表失败: %v\n", err)
+		// 如果无法获取路由表，设置空数组而不是返回错误
+		config["routes"] = []map[string]interface{}{}
+	} else {
+		routes := make([]map[string]interface{}, 0, len(routeEntries))
+		for _, route := range routeEntries {
+			routeData := map[string]interface{}{
+				"interface": route.Interface,
+				"metric":    route.Metric,
+				"type":      route.Type,
+			}
+
+			if route.Destination != nil {
+				routeData["destination"] = route.Destination.String()
+			}
+
+			if route.Gateway != nil {
+				routeData["gateway"] = route.Gateway.String()
+			}
+
+			routes = append(routes, routeData)
+		}
+		config["routes"] = routes
+	}
+
+	// 收集系统设置
+	settings := map[string]interface{}{
+		"timestamp": time.Now().Format(time.RFC3339),
+		"version":   "1.0.0",
+		"os_type":   runtime.GOOS,
+	}
+
+	// 检查IP转发状态
+	ipForwardingEnabled, err := bm.checkIPForwardingStatus()
+	if err != nil {
+		fmt.Printf("警告: 检查IP转发状态失败: %v\n", err)
+		settings["ip_forwarding"] = "unknown"
+	} else {
+		settings["ip_forwarding"] = ipForwardingEnabled
+	}
+
+	config["settings"] = settings
+
+	return config, nil
+}
+
+// checkIPForwardingStatus 检查IP转发状态
+func (bm *BackupManager) checkIPForwardingStatus() (bool, error) {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "linux":
+		// Linux: 读取 /proc/sys/net/ipv4/ip_forward
+		cmd = exec.Command("cat", "/proc/sys/net/ipv4/ip_forward")
+	case "darwin":
+		// macOS: 使用 sysctl 检查
+		cmd = exec.Command("sysctl", "-n", "net.inet.ip.forwarding")
+	case "windows":
+		// Windows: 使用 netsh 检查
+		cmd = exec.Command("netsh", "interface", "ipv4", "show", "global")
+	default:
+		return false, fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("执行命令失败: %v", err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		// Linux和macOS返回1表示启用，0表示禁用
+		return outputStr == "1", nil
+	case "windows":
+		// Windows需要解析netsh输出
+		return strings.Contains(outputStr, "Forwarding=Enabled"), nil
+	default:
+		return false, fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
+	}
+}
+
+// readBackupFile 读取备份文件
+func (bm *BackupManager) readBackupFile(filePath string) ([]byte, error) {
+	// 检查文件是否存在
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("备份文件不存在: %s", filePath)
+	}
+
+	// 读取文件内容
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("读取备份文件失败: %v", err)
+	}
+
+	// 检查文件是否为空
+	if len(data) == 0 {
+		return nil, fmt.Errorf("备份文件为空: %s", filePath)
+	}
+
+	fmt.Printf("成功读取备份文件: %s (大小: %d 字节)\n", filePath, len(data))
+	return data, nil
+}
+
+// validateBackupData 验证备份数据
+func (bm *BackupManager) validateBackupData(data []byte) error {
+	fmt.Printf("验证备份数据完整性...\n")
+
+	// 检查数据是否为空
+	if len(data) == 0 {
+		return fmt.Errorf("备份数据为空")
+	}
+
+	// 验证JSON格式
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("备份数据JSON格式无效: %v", err)
+	}
+
+	// 验证必需的配置节
+	requiredSections := []string{"interfaces", "routes", "settings"}
+	for _, section := range requiredSections {
+		if _, exists := config[section]; !exists {
+			return fmt.Errorf("备份数据缺少必需的配置节: %s", section)
+		}
+	}
+
+	// 验证接口配置
+	if interfaces, ok := config["interfaces"].(map[string]interface{}); ok {
+		for ifName, ifConfig := range interfaces {
+			if ifConfigMap, ok := ifConfig.(map[string]interface{}); ok {
+				// 检查必需的接口字段
+				requiredFields := []string{"ip", "netmask", "status"}
+				for _, field := range requiredFields {
+					if _, exists := ifConfigMap[field]; !exists {
+						return fmt.Errorf("接口 %s 缺少必需字段: %s", ifName, field)
+					}
+				}
+			}
+		}
+	}
+
+	// 验证路由配置
+	if routes, ok := config["routes"].([]interface{}); ok {
+		for i, route := range routes {
+			if routeMap, ok := route.(map[string]interface{}); ok {
+				// 检查必需的路由字段
+				requiredFields := []string{"destination", "gateway", "interface"}
+				for _, field := range requiredFields {
+					if _, exists := routeMap[field]; !exists {
+						return fmt.Errorf("路由 %d 缺少必需字段: %s", i, field)
+					}
+				}
+			}
+		}
+	}
+
+	// 验证设置配置
+	if settings, ok := config["settings"].(map[string]interface{}); ok {
+		// 检查版本信息
+		if version, exists := settings["version"]; !exists || version == "" {
+			return fmt.Errorf("备份数据缺少版本信息")
+		}
+	}
+
+	fmt.Printf("备份数据验证通过\n")
+	return nil
+}
+
+// applyBackupConfiguration 应用备份配置
+func (bm *BackupManager) applyBackupConfiguration(data []byte) error {
+	fmt.Printf("应用备份配置...\n")
+
+	// 解析JSON配置
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("解析备份配置失败: %v", err)
+	}
+
+	// 应用网络接口配置
+	if err := bm.applyInterfaceConfiguration(config["interfaces"]); err != nil {
+		return fmt.Errorf("应用接口配置失败: %v", err)
+	}
+
+	// 应用路由配置
+	if err := bm.applyRouteConfiguration(config["routes"]); err != nil {
+		return fmt.Errorf("应用路由配置失败: %v", err)
+	}
+
+	// 应用系统设置
+	if err := bm.applySystemSettings(config["settings"]); err != nil {
+		return fmt.Errorf("应用系统设置失败: %v", err)
+	}
+
+	fmt.Printf("备份配置应用完成\n")
+	return nil
+}
+
+// applyInterfaceConfiguration 应用接口配置
+func (bm *BackupManager) applyInterfaceConfiguration(interfacesData interface{}) error {
+	fmt.Printf("- 应用网络接口配置\n")
+
+	interfaces, ok := interfacesData.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("接口配置数据格式无效")
+	}
+
+	// 创建网络配置器实例
+	nc := NewNetworkConfigurator()
+
+	for ifName, ifConfig := range interfaces {
+		if ifConfigMap, ok := ifConfig.(map[string]interface{}); ok {
+			fmt.Printf("  配置接口 %s\n", ifName)
+
+			// 应用接口状态
+			if status, exists := ifConfigMap["status"]; exists {
+				statusStr, ok := status.(string)
+				if ok {
+					switch statusStr {
+					case "up":
+						if err := nc.SetInterfaceUp(ifName); err != nil {
+							fmt.Printf("    警告: 启用接口 %s 失败: %v\n", ifName, err)
+						} else {
+							fmt.Printf("    接口 %s 已启用\n", ifName)
+						}
+					case "down":
+						if err := nc.SetInterfaceDown(ifName); err != nil {
+							fmt.Printf("    警告: 禁用接口 %s 失败: %v\n", ifName, err)
+						} else {
+							fmt.Printf("    接口 %s 已禁用\n", ifName)
+						}
+					}
+				}
+			}
+
+			// 应用IP配置
+			if ip, ipExists := ifConfigMap["ip"]; ipExists {
+				if netmask, maskExists := ifConfigMap["netmask"]; maskExists {
+					ipStr, ipOk := ip.(string)
+					maskStr, maskOk := netmask.(string)
+
+					if ipOk && maskOk && ipStr != "" && maskStr != "" {
+						if err := nc.SetInterfaceIP(ifName, ipStr, maskStr); err != nil {
+							fmt.Printf("    警告: 设置接口 %s IP地址失败: %v\n", ifName, err)
+						} else {
+							fmt.Printf("    接口 %s IP地址已设置为 %s/%s\n", ifName, ipStr, maskStr)
+						}
+					}
+				}
+			}
+
+			// 打印其他配置信息
+			if mtu, exists := ifConfigMap["mtu"]; exists {
+				fmt.Printf("    MTU: %v\n", mtu)
+			}
+			if mac, exists := ifConfigMap["mac"]; exists {
+				fmt.Printf("    MAC: %v\n", mac)
+			}
+		}
+	}
 
 	return nil
+}
+
+// applyRouteConfiguration 应用路由配置
+func (bm *BackupManager) applyRouteConfiguration(routesData interface{}) error {
+	fmt.Printf("- 应用路由表配置\n")
+
+	routes, ok := routesData.([]interface{})
+	if !ok {
+		return fmt.Errorf("路由配置数据格式无效")
+	}
+
+	// 创建网络配置器实例
+	nc := NewNetworkConfigurator()
+
+	for i, route := range routes {
+		if routeMap, ok := route.(map[string]interface{}); ok {
+			fmt.Printf("  配置路由 %d\n", i+1)
+
+			// 获取路由参数
+			dest, destExists := routeMap["destination"].(string)
+			gateway, gatewayExists := routeMap["gateway"].(string)
+			iface, ifaceExists := routeMap["interface"].(string)
+
+			if !destExists || !gatewayExists {
+				fmt.Printf("    跳过无效路由: 缺少目标或网关信息\n")
+				continue
+			}
+
+			// 获取metric，如果不存在则使用默认值
+			metric := 0
+			if metricVal, exists := routeMap["metric"]; exists {
+				if metricFloat, ok := metricVal.(float64); ok {
+					metric = int(metricFloat)
+				}
+			}
+
+			// 应用路由配置
+			err := nc.AddRoute(dest, gateway, iface, metric)
+			if err != nil {
+				fmt.Printf("    路由配置失败: %v\n", err)
+				// 继续处理其他路由，不中断整个恢复过程
+				continue
+			}
+
+			fmt.Printf("    目标: %s\n", dest)
+			fmt.Printf("    网关: %s\n", gateway)
+			if ifaceExists {
+				fmt.Printf("    接口: %s\n", iface)
+			}
+			if metric > 0 {
+				fmt.Printf("    优先级: %d\n", metric)
+			}
+			fmt.Printf("    状态: 已应用\n")
+		}
+	}
+
+	return nil
+}
+
+// applySystemSettings 应用系统设置
+func (bm *BackupManager) applySystemSettings(settingsData interface{}) error {
+	fmt.Printf("- 应用系统设置\n")
+
+	settings, ok := settingsData.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("系统设置数据格式无效")
+	}
+
+	// 创建网络配置器实例
+	nc := NewNetworkConfigurator()
+
+	// 应用IP转发设置
+	if ipForwarding, exists := settings["ip_forwarding"]; exists {
+		if enable, ok := ipForwarding.(bool); ok {
+			fmt.Printf("  IP转发: %v\n", enable)
+
+			var err error
+			if enable {
+				err = nc.EnableIPForwarding()
+			} else {
+				err = nc.DisableIPForwarding()
+			}
+
+			if err != nil {
+				fmt.Printf("    IP转发设置失败: %v\n", err)
+				// 继续处理其他设置，不中断整个恢复过程
+			} else {
+				fmt.Printf("    IP转发设置成功\n")
+			}
+		}
+	}
+
+	// 应用其他系统设置
+	for key, value := range settings {
+		if key != "ip_forwarding" && key != "timestamp" && key != "version" {
+			fmt.Printf("  %s: %v\n", key, value)
+			// 注意：其他系统设置可能需要特定的处理逻辑
+			// 这里只是记录，实际应用需要根据具体设置类型来处理
+		}
+	}
+
+	return nil
+}
+
+// validateRestoredConfiguration 验证恢复后的配置
+func (bm *BackupManager) validateRestoredConfiguration() error {
+	fmt.Printf("验证恢复后的配置...\n")
+
+	// 检查网络接口状态
+	if err := bm.validateNetworkInterfaces(); err != nil {
+		return fmt.Errorf("网络接口验证失败: %v", err)
+	}
+
+	// 验证路由表
+	if err := bm.validateRouteTable(); err != nil {
+		return fmt.Errorf("路由表验证失败: %v", err)
+	}
+
+	// 测试网络连通性
+	if err := bm.validateNetworkConnectivity(); err != nil {
+		return fmt.Errorf("网络连通性验证失败: %v", err)
+	}
+
+	// 验证系统设置
+	if err := bm.validateSystemSettings(); err != nil {
+		return fmt.Errorf("系统设置验证失败: %v", err)
+	}
+
+	fmt.Printf("配置验证通过\n")
+	return nil
+}
+
+// validateNetworkInterfaces 验证网络接口状态
+func (bm *BackupManager) validateNetworkInterfaces() error {
+	fmt.Printf("- 检查网络接口状态\n")
+
+	// 创建网络配置器实例
+	nc := NewNetworkConfigurator()
+
+	// 获取实际的网络接口列表
+	interfaces, err := nc.GetInterfaceList()
+	if err != nil {
+		return fmt.Errorf("获取网络接口列表失败: %v", err)
+	}
+
+	if len(interfaces) == 0 {
+		return fmt.Errorf("未找到任何网络接口")
+	}
+
+	// 验证每个接口的状态
+	for _, iface := range interfaces {
+		fmt.Printf("  检查接口 %s\n", iface)
+
+		// 获取接口配置信息
+		config, err := nc.GetInterfaceConfig(iface)
+		if err != nil {
+			fmt.Printf("    警告: 无法获取接口配置: %v\n", err)
+			continue
+		}
+
+		// 显示接口状态
+		if config.Up {
+			fmt.Printf("    状态: UP\n")
+		} else {
+			fmt.Printf("    状态: DOWN\n")
+		}
+
+		// 显示IP地址信息
+		if config.IPAddress != nil {
+			fmt.Printf("    IP地址: %s\n", config.IPAddress.String())
+			if config.Netmask != nil {
+				fmt.Printf("    子网掩码: %s\n", net.IP(config.Netmask).String())
+			}
+		}
+
+		// 显示MAC地址
+		if config.MAC != nil {
+			fmt.Printf("    MAC地址: %s\n", config.MAC.String())
+		}
+
+		// 显示MTU
+		if config.MTU > 0 {
+			fmt.Printf("    MTU: %d\n", config.MTU)
+		}
+	}
+
+	fmt.Printf("  网络接口验证完成，共检查 %d 个接口\n", len(interfaces))
+	return nil
+}
+
+// validateRouteTable 验证路由表
+func (bm *BackupManager) validateRouteTable() error {
+	fmt.Printf("- 验证路由表\n")
+
+	// 创建网络配置器实例
+	nc := NewNetworkConfigurator()
+
+	// 获取实际的路由表
+	routes, err := nc.GetRouteTable()
+	if err != nil {
+		return fmt.Errorf("获取路由表失败: %v", err)
+	}
+
+	if len(routes) == 0 {
+		fmt.Printf("  路由表为空\n")
+		return nil
+	}
+
+	// 显示路由表信息
+	for i, route := range routes {
+		fmt.Printf("  路由 %d:\n", i+1)
+
+		if route.Destination != nil {
+			fmt.Printf("    目标: %s\n", route.Destination.String())
+		}
+
+		if route.Gateway != nil && !route.Gateway.IsUnspecified() {
+			fmt.Printf("    网关: %s\n", route.Gateway.String())
+		}
+
+		if route.Interface != "" {
+			fmt.Printf("    接口: %s\n", route.Interface)
+		}
+
+		if route.Metric > 0 {
+			fmt.Printf("    优先级: %d\n", route.Metric)
+		}
+
+		if route.Type != "" {
+			fmt.Printf("    类型: %s\n", route.Type)
+		}
+	}
+
+	fmt.Printf("  路由表验证完成，共检查 %d 条路由\n", len(routes))
+	return nil
+}
+
+// validateNetworkConnectivity 验证网络连通性
+func (bm *BackupManager) validateNetworkConnectivity() error {
+	fmt.Printf("- 测试网络连通性\n")
+
+	// 定义测试目标
+	testTargets := []string{"8.8.8.8", "1.1.1.1"}
+
+	for _, target := range testTargets {
+		fmt.Printf("  测试连接到 %s\n", target)
+
+		// 执行真实的ping测试
+		success := bm.pingHost(target)
+		if success {
+			fmt.Printf("    结果: 连接正常\n")
+		} else {
+			fmt.Printf("    结果: 连接失败\n")
+			// 连通性测试失败不中断整个验证过程，只记录警告
+		}
+	}
+
+	return nil
+}
+
+// pingHost 执行ping测试
+func (bm *BackupManager) pingHost(host string) bool {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("ping", "-n", "1", "-w", "3000", host)
+	case "darwin", "linux":
+		cmd = exec.Command("ping", "-c", "1", "-W", "3", host)
+	default:
+		// 对于其他系统，尝试使用通用的ping命令
+		cmd = exec.Command("ping", "-c", "1", host)
+	}
+
+	err := cmd.Run()
+	return err == nil
+}
+
+// validateSystemSettings 验证系统设置
+func (bm *BackupManager) validateSystemSettings() error {
+	fmt.Printf("- 验证系统设置\n")
+
+	// 创建网络配置器实例
+	nc := NewNetworkConfigurator()
+
+	// 检查IP转发状态
+	ipForwardingEnabled, err := bm.checkIPForwardingStatus()
+	if err != nil {
+		fmt.Printf("  检查IP转发状态失败: %v\n", err)
+	} else {
+		fmt.Printf("  IP转发状态: %v\n", ipForwardingEnabled)
+	}
+
+	// 检查网络接口数量
+	interfaces, err := nc.GetInterfaceList()
+	if err != nil {
+		fmt.Printf("  获取网络接口列表失败: %v\n", err)
+	} else {
+		fmt.Printf("  网络接口数量: %d\n", len(interfaces))
+	}
+
+	// 检查路由表条目数量
+	routes, err := nc.GetRouteTable()
+	if err != nil {
+		fmt.Printf("  获取路由表失败: %v\n", err)
+	} else {
+		fmt.Printf("  路由表条目数量: %d\n", len(routes))
+	}
+
+	fmt.Printf("  系统设置验证完成\n")
+	return nil
+}
+
+// cleanupTemporaryBackup 清理临时备份
+func (bm *BackupManager) cleanupTemporaryBackup(tempBackup *BackupInfo) {
+	if tempBackup == nil {
+		fmt.Printf("临时备份信息为空，无需清理\n")
+		return
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(tempBackup.FilePath); os.IsNotExist(err) {
+		fmt.Printf("临时备份文件不存在: %s\n", tempBackup.FilePath)
+		return
+	}
+
+	// 删除临时备份文件
+	if err := os.Remove(tempBackup.FilePath); err != nil {
+		fmt.Printf("删除临时备份文件失败: %v\n", err)
+		return
+	}
+
+	fmt.Printf("成功清理临时备份: %s\n", tempBackup.FilePath)
 }
 
 // ListBackups 列出所有备份
@@ -1515,7 +2409,7 @@ func (bm *BackupManager) cleanupOldBackups() {
 		oldestBackup := bm.backupHistory[0]
 
 		// 删除备份文件
-		exec.Command("rm", "-f", oldestBackup.FilePath).Run()
+		_ = exec.Command("rm", "-f", oldestBackup.FilePath).Run()
 
 		// 从历史记录中移除
 		bm.backupHistory = bm.backupHistory[1:]

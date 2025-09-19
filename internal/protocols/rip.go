@@ -158,7 +158,7 @@ type RIPNeighbor struct {
 	Version    uint8
 	Routes     map[string]*RIPEntry
 	Interface  string
-	mu         sync.RWMutex
+	mu         sync.RWMutex //nolint:unused // 为邻居状态同步保留
 }
 
 // RIP接口
@@ -172,7 +172,7 @@ type RIPInterface struct {
 	UpdateTimer  *time.Timer
 	TimeoutTimer *time.Timer
 	GarbageTimer *time.Timer
-	mu           sync.RWMutex
+	mu           sync.RWMutex //nolint:unused // 为接口状态同步保留
 }
 
 // RIP路由表项增强
@@ -417,18 +417,15 @@ func (rm *RIPManager) periodicUpdate() {
 	defer ticker.Stop() // 确保在函数退出时清理定时器资源
 
 	// 主循环：持续监听定时器信号
-	for {
-		select {
-		case <-ticker.C:
-			// 定时器触发：检查协议状态并发送更新
-			// 只有在协议运行状态下才发送更新
-			if !rm.IsRunning() {
-				// 协议已停止，退出循环
-				return
-			}
-			// 发送路由更新到所有邻居
-			rm.sendRoutingUpdate()
+	for range ticker.C {
+		// 定时器触发：检查协议状态并发送更新
+		// 只有在协议运行状态下才发送更新
+		if !rm.IsRunning() {
+			// 协议已停止，退出循环
+			return
 		}
+		// 发送路由更新到所有邻居
+		rm.sendRoutingUpdate()
 	}
 }
 
@@ -465,18 +462,15 @@ func (rm *RIPManager) neighborTimeout() {
 	defer ticker.Stop() // 确保在函数退出时清理定时器资源
 
 	// 主循环：持续监听定时器信号
-	for {
-		select {
-		case <-ticker.C:
-			// 定时器触发：检查协议状态并执行超时检测
-			// 只有在协议运行状态下才进行邻居检查
-			if !rm.IsRunning() {
-				// 协议已停止，退出循环
-				return
-			}
-			// 检查所有邻居的超时状态
-			rm.checkNeighborTimeout()
+	for range ticker.C {
+		// 定时器触发：检查协议状态并执行超时检测
+		// 只有在协议运行状态下才进行邻居检查
+		if !rm.IsRunning() {
+			// 协议已停止，退出循环
+			return
 		}
+		// 检查所有邻居的超时状态
+		rm.checkNeighborTimeout()
 	}
 }
 
@@ -690,7 +684,7 @@ func (rm *RIPManager) handleRIPResponse(packet *RIPPacket, sourceIP net.IP, rece
 		if entry.Metric >= RIPMaxMetric {
 			// 路由不可达，从路由表中删除相关路由
 			// 这是RIP协议的毒性逆转机制，用于快速传播路由失效信息
-			rm.routingTable.RemoveRoute(&entry.Network, entry.NextHop, receivedInterface)
+			_ = rm.routingTable.RemoveRoute(&entry.Network, entry.NextHop, receivedInterface)
 			continue
 		}
 
@@ -724,7 +718,7 @@ func (rm *RIPManager) handleRIPResponse(packet *RIPPacket, sourceIP net.IP, rece
 		if err != nil || existingRoute.Metric > metric {
 			// 新路由更优或不存在现有路由，添加到路由表
 			// 路由表会自动处理路由替换和更新逻辑
-			rm.routingTable.AddRoute(route)
+			_ = rm.routingTable.AddRoute(route)
 		}
 	}
 
@@ -753,7 +747,7 @@ func (rm *RIPManager) removeRoutesFromNeighbor(neighbor string) {
 
 	for _, route := range routes {
 		if route.Type == routing.RouteTypeDynamic && route.Gateway.Equal(neighborIP) {
-			rm.routingTable.RemoveRoute(route.Destination, route.Gateway, route.Interface)
+			_ = rm.routingTable.RemoveRoute(route.Destination, route.Gateway, route.Interface)
 		}
 	}
 }
@@ -808,14 +802,11 @@ func (rm *RIPManager) stateMachine() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !rm.IsRunning() {
-				return
-			}
-			rm.processStateMachine()
+	for range ticker.C {
+		if !rm.IsRunning() {
+			return
 		}
+		rm.processStateMachine()
 	}
 }
 
@@ -833,6 +824,8 @@ func (rm *RIPManager) processStateMachine() {
 	case RIPStateStopping:
 		// 清理资源
 		rm.cleanupResources()
+	default:
+		rm.logger.Error("unhandled default case")
 	}
 }
 
@@ -926,7 +919,7 @@ func (rm *RIPManager) removeInterface(ripIface *RIPInterface) {
 // removeNeighborRoutes 删除邻居的路由
 func (rm *RIPManager) removeNeighborRoutes(neighbor *RIPNeighbor) {
 	for _, route := range neighbor.Routes {
-		rm.routingTable.RemoveRoute(&route.Network, neighbor.Address, neighbor.Interface)
+		_ = rm.routingTable.RemoveRoute(&route.Network, neighbor.Address, neighbor.Interface)
 	}
 }
 

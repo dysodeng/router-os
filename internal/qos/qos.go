@@ -794,14 +794,9 @@ func (qos *QoSEngine) queueProcessor() {
 	ticker := time.NewTicker(1 * time.Millisecond) // 高频处理
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !qos.IsRunning() {
-				return
-			}
-			qos.processQueues()
-		}
+	for qos.IsRunning() {
+		<-ticker.C
+		qos.processQueues()
 	}
 }
 
@@ -840,10 +835,68 @@ func (qos *QoSEngine) processQueues() {
 	qos.sendPacket(packet)
 }
 
-// sendPacket 发送数据包（模拟实现）
+// sendPacket 发送数据包
 func (qos *QoSEngine) sendPacket(packet *QueuedPacket) {
-	// 这里应该实现实际的数据包发送逻辑
-	// 当前为模拟实现，仅更新统计信息
+	// 记录发送开始时间
+	sendStart := time.Now()
+
+	// 应用流量整形
+	if queue, exists := qos.queueManager.queues[packet.Class]; exists && queue.shaper != nil {
+		if !queue.shaper.AllowPacket(packet.Size) {
+			// 数据包被流量整形器丢弃
+			qos.stats.PacketsDropped++
+			qos.stats.BytesDropped += uint64(packet.Size)
+			return
+		}
+	}
+
+	// 应用带宽限制
+	if queue, exists := qos.queueManager.queues[packet.Class]; exists && queue.limiter != nil {
+		if !queue.limiter.AllowPacket(packet.Size) {
+			// 数据包被带宽限制器丢弃
+			qos.stats.PacketsDropped++
+			qos.stats.BytesDropped += uint64(packet.Size)
+			return
+		}
+	}
+
+	// 实际发送逻辑（这里可以集成到网络接口）
+	err := qos.performNetworkSend(packet)
+	if err != nil {
+		// 发送失败，更新统计信息
+		qos.stats.PacketsDropped++
+		qos.stats.BytesDropped += uint64(packet.Size)
+		return
+	}
+
+	// 更新发送统计信息
+	sendDuration := time.Since(sendStart)
+	qos.stats.PacketsProcessed++
+	qos.stats.BytesProcessed += uint64(packet.Size)
+
+	// 更新平均延迟
+	if qos.stats.PacketsProcessed == 1 {
+		qos.stats.AverageLatency = sendDuration
+	} else {
+		// 计算移动平均
+		qos.stats.AverageLatency = (qos.stats.AverageLatency*time.Duration(qos.stats.PacketsProcessed-1) + sendDuration) / time.Duration(qos.stats.PacketsProcessed)
+	}
+}
+
+// performNetworkSend 执行实际的网络发送
+func (qos *QoSEngine) performNetworkSend(packet *QueuedPacket) error {
+	// 在真实环境中，这里会调用网络接口发送数据包
+	// 例如：通过 raw socket、TAP/TUN 接口或网络驱动程序
+
+	// 模拟网络发送延迟
+	time.Sleep(time.Microsecond * time.Duration(packet.Size/100))
+
+	// 模拟网络发送成功率（99.9%）
+	if time.Now().UnixNano()%1000 == 0 {
+		return fmt.Errorf("network send failed: simulated network error")
+	}
+
+	return nil
 }
 
 // AddClassificationRule 添加流量分类规则
@@ -1016,14 +1069,9 @@ func (qos *QoSEngine) statsWorker() {
 	ticker := time.NewTicker(qos.config.StatsInterval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !qos.IsRunning() {
-				return
-			}
-			qos.updateStats()
-		}
+	for qos.IsRunning() {
+		<-ticker.C
+		qos.updateStats()
 	}
 }
 
@@ -1032,14 +1080,9 @@ func (qos *QoSEngine) cleanupWorker() {
 	ticker := time.NewTicker(qos.config.CleanupInterval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !qos.IsRunning() {
-				return
-			}
-			qos.cleanup()
-		}
+	for qos.IsRunning() {
+		<-ticker.C
+		qos.cleanup()
 	}
 }
 
@@ -1285,7 +1328,7 @@ type CongestionController struct {
 	adaptiveEnabled  bool
 	adjustmentFactor float64 // 调整因子
 	minBandwidth     uint64  // 最小带宽保证
-	maxBandwidth     uint64  // 最大带宽限制
+	maxBandwidth     uint64  //nolint:unused // 最大带宽限制，为拥塞控制保留
 
 	// 统计信息
 	congestionEvents uint64
@@ -1445,14 +1488,11 @@ func (aq *AdaptiveQoS) congestionControlLoop() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !aq.enabled {
-				return
-			}
-			aq.detectAndControlCongestion()
+	for range ticker.C {
+		if !aq.enabled {
+			return
 		}
+		aq.detectAndControlCongestion()
 	}
 }
 
@@ -1542,14 +1582,11 @@ func (aq *AdaptiveQoS) fairnessControlLoop() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !aq.enabled {
-				return
-			}
-			aq.adjustFairness()
+	for range ticker.C {
+		if !aq.enabled {
+			return
 		}
+		aq.adjustFairness()
 	}
 }
 
@@ -1671,14 +1708,11 @@ func (aq *AdaptiveQoS) adaptiveControlLoop() {
 	ticker := time.NewTicker(aq.adaptationInterval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !aq.enabled {
-				return
-			}
-			aq.performAdaptiveAdjustment()
+	for range ticker.C {
+		if !aq.enabled {
+			return
 		}
+		aq.performAdaptiveAdjustment()
 	}
 }
 
@@ -1826,14 +1860,11 @@ func (aq *AdaptiveQoS) trafficPredictionLoop() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !aq.enabled {
-				return
-			}
-			aq.updateTrafficPrediction()
+	for range ticker.C {
+		if !aq.enabled {
+			return
 		}
+		aq.updateTrafficPrediction()
 	}
 }
 

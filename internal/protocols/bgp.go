@@ -400,7 +400,7 @@ func (bm *BGPManager) AddPeer(address net.IP, as uint16) error {
 	}
 
 	bm.peers[peerKey] = peer
-	bm.logger.Info(fmt.Sprintf("添加BGP邻居: %s (AS %d)", address, as))
+	bm.logger.Info("添加BGP邻居: %s (AS %d)", address.String(), as)
 
 	// 启动连接
 	go bm.connectToPeer(peer)
@@ -416,14 +416,14 @@ func (bm *BGPManager) RemovePeer(address net.IP) error {
 	peerKey := address.String()
 	peer, exists := bm.peers[peerKey]
 	if !exists {
-		return fmt.Errorf("BGP邻居 %s 不存在", address)
+		return fmt.Errorf("BGP邻居 %s 不存在", address.String())
 	}
 
 	// 撤销从该邻居学到的所有路由
 	bm.withdrawRoutesFromPeer(peer)
 
 	delete(bm.peers, peerKey)
-	bm.logger.Info(fmt.Sprintf("删除BGP邻居: %s", address))
+	bm.logger.Info("删除BGP邻居: %s", address.String())
 
 	return nil
 }
@@ -437,7 +437,7 @@ func (bm *BGPManager) connectToPeer(peer *BGPPeer) {
 		return
 	}
 
-	bm.logger.Info(fmt.Sprintf("尝试连接BGP邻居: %s", peer.Address))
+	bm.logger.Info("尝试连接BGP邻居: %s", peer.Address)
 	peer.State = BGPConnect
 
 	// 这里应该建立TCP连接，简化实现
@@ -446,10 +446,10 @@ func (bm *BGPManager) connectToPeer(peer *BGPPeer) {
 
 	if bm.sendOpenMessage(peer) {
 		peer.State = BGPOpenSent
-		bm.logger.Info(fmt.Sprintf("发送Open消息到邻居: %s", peer.Address))
+		bm.logger.Info("发送Open消息到邻居: %s", peer.Address.String())
 	} else {
 		peer.State = BGPIdle
-		bm.logger.Warn(fmt.Sprintf("连接邻居失败: %s", peer.Address))
+		bm.logger.Warn("连接邻居失败: %s", peer.Address.String())
 	}
 }
 
@@ -466,8 +466,8 @@ func (bm *BGPManager) sendOpenMessage(peer *BGPPeer) bool {
 	}
 
 	// 这里应该实际发送消息，简化实现
-	bm.logger.Debug(fmt.Sprintf("发送BGP Open消息到 %s (AS: %d, Hold: %d)",
-		peer.Address, open.MyAS, open.HoldTime))
+	bm.logger.Debug("发送BGP Open消息到 %s (AS: %d, Hold: %d)",
+		peer.Address.String(), open.MyAS, open.HoldTime)
 	return true
 }
 
@@ -477,7 +477,7 @@ func (bm *BGPManager) ProcessOpenMessage(message *BGPOpenMessage, peer *BGPPeer)
 	defer peer.mu.Unlock()
 
 	if peer.State != BGPOpenSent && peer.State != BGPConnect {
-		return fmt.Errorf("BGP邻居 %s 状态错误: %d", peer.Address, peer.State)
+		return fmt.Errorf("BGP邻居 %s 状态错误: %d", peer.Address.String(), peer.State)
 	}
 
 	// 验证BGP版本
@@ -505,7 +505,7 @@ func (bm *BGPManager) ProcessOpenMessage(message *BGPOpenMessage, peer *BGPPeer)
 	} else {
 		peer.State = BGPEstablished
 		peer.EstablishedTime = time.Now()
-		bm.logger.Info(fmt.Sprintf("BGP会话建立: %s", peer.Address))
+		bm.logger.Info("BGP会话建立: %s", peer.Address.String())
 	}
 
 	return nil
@@ -611,7 +611,7 @@ func (bm *BGPManager) installRoute(route *BGPRoute, peer *BGPPeer) {
 	// 触发路由选择
 	bm.selectBestRoute(prefixKey)
 
-	bm.logger.Debug(fmt.Sprintf("安装BGP路由: %s via %s", route.Prefix, route.NextHop))
+	bm.logger.Debug("安装BGP路由: %s via %s", route.Prefix, route.NextHop)
 }
 
 // withdrawRoute 撤销路由
@@ -637,7 +637,7 @@ func (bm *BGPManager) withdrawRoute(prefix *net.IPNet, peer *BGPPeer) {
 		bm.selectBestRoute(prefixKey)
 	}
 
-	bm.logger.Debug(fmt.Sprintf("撤销BGP路由: %s", prefix))
+	bm.logger.Debug("撤销BGP路由: %s", prefix.String())
 }
 
 // selectBestRoute 选择最优路由
@@ -710,14 +710,14 @@ func (bm *BGPManager) installToRoutingTable(route *BGPRoute) {
 		Age:         route.Age,
 	}
 
-	bm.routingTable.AddRoute(routeEntry)
+	_ = bm.routingTable.AddRoute(routeEntry)
 }
 
 // findOutputInterface 查找输出接口
 func (bm *BGPManager) findOutputInterface(nextHop net.IP) string {
-	interfaces := bm.interfaceManager.GetAllInterfaces()
+	ifaces := bm.interfaceManager.GetAllInterfaces()
 
-	for _, iface := range interfaces {
+	for _, iface := range ifaces {
 		if iface.IPAddress != nil && iface.Netmask != nil {
 			network := &net.IPNet{IP: iface.IPAddress.Mask(iface.Netmask), Mask: iface.Netmask}
 			if network.Contains(nextHop) {
@@ -754,14 +754,11 @@ func (bm *BGPManager) keepaliveTimer() {
 	ticker := time.NewTicker(BGPKeepaliveTime)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !bm.IsRunning() {
-				return
-			}
-			bm.sendKeepaliveToAllPeers()
+	for range ticker.C {
+		if !bm.IsRunning() {
+			return
 		}
+		bm.sendKeepaliveToAllPeers()
 	}
 }
 
@@ -786,7 +783,7 @@ func (bm *BGPManager) sendKeepalive(peer *BGPPeer) {
 	}
 
 	// 这里应该实际发送消息，简化实现
-	bm.logger.Debug(fmt.Sprintf("发送BGP Keepalive到 %s (Type: %d)", peer.Address, keepalive.Header.Type))
+	bm.logger.Debug("发送BGP Keepalive到 %s (Type: %d)", peer.Address, keepalive.Header.Type)
 	peer.LastKeepalive = time.Now()
 }
 
@@ -795,14 +792,11 @@ func (bm *BGPManager) holdTimer() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !bm.IsRunning() {
-				return
-			}
-			bm.checkHoldTimers()
+	for range ticker.C {
+		if !bm.IsRunning() {
+			return
 		}
+		bm.checkHoldTimers()
 	}
 }
 
@@ -815,7 +809,7 @@ func (bm *BGPManager) checkHoldTimers() {
 	for _, peer := range bm.peers {
 		if peer.State == BGPEstablished {
 			if now.Sub(peer.LastKeepalive) > peer.HoldTime {
-				bm.logger.Warn(fmt.Sprintf("BGP邻居 %s Hold定时器超时", peer.Address))
+				bm.logger.Warn("BGP邻居 %s Hold定时器超时", peer.Address.String())
 				peer.State = BGPIdle
 				bm.withdrawRoutesFromPeer(peer)
 			}
@@ -828,14 +822,11 @@ func (bm *BGPManager) connectRetryTimer() {
 	ticker := time.NewTicker(BGPConnectRetryTime)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !bm.IsRunning() {
-				return
-			}
-			bm.retryConnections()
+	for range ticker.C {
+		if !bm.IsRunning() {
+			return
 		}
+		bm.retryConnections()
 	}
 }
 
@@ -856,14 +847,11 @@ func (bm *BGPManager) routeSelection() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !bm.IsRunning() {
-				return
-			}
-			bm.runRouteSelection()
+	for range ticker.C {
+		if !bm.IsRunning() {
+			return
 		}
+		bm.runRouteSelection()
 	}
 }
 
@@ -889,8 +877,8 @@ func (bm *BGPManager) sendNotification(peer *BGPPeer, errorCode, errorSubcode ui
 	}
 
 	// 这里应该实际发送消息，简化实现
-	bm.logger.Warn(fmt.Sprintf("发送BGP Notification到 %s (错误: %d.%d, 数据长度: %d)",
-		peer.Address, notification.ErrorCode, notification.ErrorSubcode, len(notification.Data)))
+	bm.logger.Warn("发送BGP Notification到 %s (错误: %d.%d, 数据长度: %d)",
+		peer.Address, notification.ErrorCode, notification.ErrorSubcode, len(notification.Data))
 	peer.State = BGPIdle
 }
 
@@ -955,14 +943,11 @@ func (bm *BGPManager) peerStateMachine() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !bm.IsRunning() {
-				return
-			}
-			bm.processPeerStates()
+	for range ticker.C {
+		if !bm.IsRunning() {
+			return
 		}
+		bm.processPeerStates()
 	}
 }
 
@@ -982,7 +967,7 @@ func (bm *BGPManager) processPeerStateTransition(peer *BGPPeer) {
 	defer peer.mu.Unlock()
 
 	now := time.Now()
-	
+
 	switch peer.State {
 	case BGPIdle:
 		// 空闲状态，尝试连接
@@ -990,28 +975,28 @@ func (bm *BGPManager) processPeerStateTransition(peer *BGPPeer) {
 			bm.logger.Info("尝试连接BGP邻居: %s", peer.Address.String())
 			go bm.connectToPeer(peer)
 		}
-		
+
 	case BGPConnect:
 		// 连接状态，等待连接建立
 		// 这里应该检查TCP连接状态
-		
+
 	case BGPActive:
 		// 活跃状态，等待连接
-		
+
 	case BGPOpenSent:
 		// 已发送Open消息，等待回复
 		if now.Sub(peer.LastUpdate) > peer.HoldTime {
 			bm.logger.Warn("BGP邻居 %s Open消息超时", peer.Address.String())
 			peer.State = BGPIdle
 		}
-		
+
 	case BGPOpenConfirm:
 		// Open确认状态，等待Keepalive
 		if now.Sub(peer.LastKeepalive) > peer.HoldTime {
 			bm.logger.Warn("BGP邻居 %s Keepalive超时", peer.Address.String())
 			peer.State = BGPIdle
 		}
-		
+
 	case BGPEstablished:
 		// 已建立状态，检查Keepalive超时
 		if now.Sub(peer.LastKeepalive) > peer.HoldTime {
@@ -1028,14 +1013,11 @@ func (bm *BGPManager) routeAdvertisement() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !bm.IsRunning() {
-				return
-			}
-			bm.processRouteAdvertisement()
+	for range ticker.C {
+		if !bm.IsRunning() {
+			return
 		}
+		bm.processRouteAdvertisement()
 	}
 }
 
@@ -1071,14 +1053,11 @@ func (bm *BGPManager) policyEngine() {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if !bm.IsRunning() {
-				return
-			}
-			bm.processPolicies()
+	for range ticker.C {
+		if !bm.IsRunning() {
+			return
 		}
+		bm.processPolicies()
 	}
 }
 
@@ -1089,10 +1068,10 @@ func (bm *BGPManager) processPolicies() {
 
 	// 应用入站策略
 	bm.applyInboundPolicies()
-	
+
 	// 应用出站策略
 	bm.applyOutboundPolicies()
-	
+
 	// 重新运行路由选择
 	bm.runRouteSelection()
 }
@@ -1150,9 +1129,13 @@ func (bm *BGPManager) applyOutboundFilter(route *BGPRoute) bool {
 func (bm *BGPManager) modifyRouteAttributes(route *BGPRoute, direction string) {
 	// 简化实现，实际应该根据策略修改路由属性
 	if direction == "inbound" {
+		// TODO: 实现入站路由属性修改逻辑
 		// 可能修改Local Preference等属性
+		bm.logger.Debug("Processing inbound route attributes for route: %s", route.Prefix.String())
 	} else {
+		// TODO: 实现出站路由属性修改逻辑
 		// 可能修改MED等属性
+		bm.logger.Debug("Processing outbound route attributes for route: %s", route.Prefix.String())
 	}
 }
 

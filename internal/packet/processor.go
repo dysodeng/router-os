@@ -19,17 +19,17 @@ const (
 	// 这是目前互联网上最常用的IP协议版本
 	// 特点：32位地址，支持约43亿个地址
 	PacketTypeIPv4 PacketType = iota
-	
-	// PacketTypeIPv6 IPv6数据包  
+
+	// PacketTypeIPv6 IPv6数据包
 	// 下一代IP协议，解决IPv4地址不足问题
 	// 特点：128位地址，支持几乎无限的地址空间
 	PacketTypeIPv6
-	
+
 	// PacketTypeARP ARP协议数据包
 	// 地址解析协议，用于将IP地址解析为MAC地址
 	// 工作在数据链路层，是IP通信的基础
 	PacketTypeARP
-	
+
 	// PacketTypeICMP ICMP协议数据包
 	// 互联网控制消息协议，用于网络诊断和错误报告
 	// 例如：ping命令使用的就是ICMP协议
@@ -43,36 +43,36 @@ type Packet struct {
 	// Type 数据包类型
 	// 标识这个数据包使用的协议类型，决定了如何处理这个数据包
 	Type PacketType
-	
+
 	// Source 源IP地址
 	// 数据包的发送方IP地址，用于回复和统计
 	// 类比：信件上的发件人地址
 	Source net.IP
-	
-	// Destination 目标IP地址  
+
+	// Destination 目标IP地址
 	// 数据包要到达的目的地IP地址，这是路由决策的关键
 	// 类比：信件上的收件人地址
 	Destination net.IP
-	
+
 	// Data 数据包载荷
 	// 实际要传输的数据内容，可能是HTTP请求、文件数据等
 	// 类比：信件的内容
 	Data []byte
-	
+
 	// Size 数据包大小（字节）
 	// 用于MTU检查和流量统计
 	// 如果超过接口MTU，需要进行分片处理
 	Size int
-	
+
 	// Timestamp 数据包时间戳
 	// 记录数据包的创建或接收时间，用于调试和性能分析
 	Timestamp time.Time
-	
+
 	// InInterface 入接口名称
 	// 数据包从哪个网络接口进入路由器
 	// 用于防环和策略路由
 	InInterface string
-	
+
 	// TTL 生存时间（Time To Live）
 	// 防止数据包在网络中无限循环的机制
 	// 每经过一个路由器就减1，减到0时丢弃数据包
@@ -87,33 +87,33 @@ type Processor struct {
 	// routingTable 路由表引用
 	// 用于查找数据包的转发路径
 	routingTable routing.RoutingTableInterface
-	
+
 	// interfaceManager 接口管理器引用
 	// 用于获取网络接口信息和状态
 	interfaceManager *interfaces.Manager
-	
+
 	// running 处理器运行状态
 	// 标识处理器是否正在运行，用于控制数据包处理
 	running bool
-	
+
 	// mu 读写互斥锁
 	// 保护并发访问时的数据一致性
 	mu sync.RWMutex
 
 	// 以下是统计信息，用于监控和调试
-	
+
 	// packetsProcessed 已处理的数据包总数
 	// 包括转发的和本地交付的数据包
 	packetsProcessed uint64
-	
+
 	// packetsForwarded 已转发的数据包数量
 	// 经过路由器转发到其他网络的数据包
 	packetsForwarded uint64
-	
+
 	// packetsDropped 已丢弃的数据包数量
 	// 由于各种原因（TTL过期、无路由、接口down等）被丢弃的数据包
 	packetsDropped uint64
-	
+
 	// packetsReceived 已接收的数据包总数
 	// 从所有接口接收到的数据包总数
 	packetsReceived uint64
@@ -171,14 +171,15 @@ func (p *Processor) Stop() {
 //   - 丢弃：TTL过期、无路由、接口故障等原因
 //
 // 使用示例：
-//   packet := processor.CreatePacket(PacketTypeIPv4, 
-//       net.ParseIP("192.168.1.100"), 
-//       net.ParseIP("10.0.0.1"), 
-//       []byte("Hello"), "eth0")
-//   err := processor.ProcessPacket(packet)
-//   if err != nil {
-//       log.Printf("数据包处理失败: %v", err)
-//   }
+//
+//	packet := processor.CreatePacket(PacketTypeIPv4,
+//	    net.ParseIP("192.168.1.100"),
+//	    net.ParseIP("10.0.0.1"),
+//	    []byte("Hello"), "eth0")
+//	err := processor.ProcessPacket(packet)
+//	if err != nil {
+//	    log.Printf("数据包处理失败: %v", err)
+//	}
 func (p *Processor) ProcessPacket(packet *Packet) error {
 	// 第一步：更新接收统计
 	// 使用锁保护统计数据的并发安全
@@ -201,7 +202,7 @@ func (p *Processor) ProcessPacket(packet *Packet) error {
 		p.mu.Lock()
 		p.packetsDropped++
 		p.mu.Unlock()
-		
+
 		// 在真实实现中，这里应该发送ICMP Time Exceeded消息给源地址
 		// 告知发送方数据包因TTL过期而被丢弃
 		return fmt.Errorf("数据包TTL过期")
@@ -261,12 +262,13 @@ func (p *Processor) ProcessPacket(packet *Packet) error {
 //   - 发送失败：底层网络发送错误
 //
 // 使用示例：
-//   // 假设要转发到10.0.0.1的数据包
-//   // 路由表中有条目：10.0.0.0/24 via 192.168.1.1 dev eth0
-//   err := processor.forwardPacket(packet)
-//   if err != nil {
-//       log.Printf("转发失败: %v", err)
-//   }
+//
+//	// 假设要转发到10.0.0.1的数据包
+//	// 路由表中有条目：10.0.0.0/24 via 192.168.1.1 dev eth0
+//	err := processor.forwardPacket(packet)
+//	if err != nil {
+//	    log.Printf("转发失败: %v", err)
+//	}
 func (p *Processor) forwardPacket(packet *Packet) error {
 	// 第一步：路由查找
 	// 在路由表中查找到目标IP地址的最佳路由
@@ -278,7 +280,7 @@ func (p *Processor) forwardPacket(packet *Packet) error {
 		p.mu.Lock()
 		p.packetsDropped++
 		p.mu.Unlock()
-		
+
 		// 在真实实现中，这里应该发送ICMP Destination Unreachable消息
 		// 告知源主机目标网络不可达
 		return fmt.Errorf("未找到路由: %v", err)
@@ -336,7 +338,7 @@ func (p *Processor) forwardPacket(packet *Packet) error {
 	// 成功转发数据包后，更新相关的统计计数器
 	// 这些统计信息用于网络监控和故障诊断
 	p.mu.Lock()
-	p.packetsProcessed++  // 总处理数据包数
+	p.packetsProcessed++ // 总处理数据包数
 	p.packetsForwarded++ // 成功转发数据包数
 	p.mu.Unlock()
 
@@ -359,7 +361,8 @@ func (p *Processor) forwardPacket(packet *Packet) error {
 //   - 使用获得的MAC地址进行二层封装
 //
 // 二层封装格式（以太网）：
-//   [目标MAC][源MAC][类型][IP数据包][FCS校验]
+//
+//	[目标MAC][源MAC][类型][IP数据包][FCS校验]
 //
 // 参数：
 //   - packet *Packet: 要发送的数据包
@@ -379,25 +382,25 @@ func (p *Processor) sendPacket(packet *Packet, outInterface *interfaces.Interfac
 	// 1. 查询ARP缓存表
 	// 2. 如果缓存未命中，发送ARP请求
 	// 3. 等待ARP回复或超时
-	
+
 	// 模拟二层封装过程
 	// 在真实实现中，这里需要：
 	// 1. 构造以太网帧头
 	// 2. 设置源MAC为出接口MAC地址
 	// 3. 设置目标MAC为下一跳MAC地址
 	// 4. 设置以太网类型（IPv4为0x0800）
-	
+
 	// 模拟物理发送过程
 	// 在真实实现中，这里需要：
 	// 1. 调用网络接口驱动程序
 	// 2. 将数据包放入发送队列
 	// 3. 处理发送完成中断
 	// 4. 更新接口统计信息
-	
+
 	// 更新接口统计信息
 	// 记录通过此接口发送的数据包和字节数
 	// 这些统计信息用于网络监控和性能分析
-	p.interfaceManager.UpdateInterfaceStats(
+	_ = p.interfaceManager.UpdateInterfaceStats(
 		outInterface.Name,
 		outInterface.TxPackets+1,
 		outInterface.RxPackets,
@@ -442,9 +445,10 @@ func (p *Processor) sendPacket(packet *Packet, outInterface *interfaces.Interfac
 //   - error: 交付成功返回nil，失败返回错误信息
 //
 // 使用示例：
-//   // 当收到目标为路由器IP的ping包时
-//   // 系统会调用deliverLocally进行本地交付
-//   // ICMP模块会生成ping回复并发送回源地址
+//
+//	// 当收到目标为路由器IP的ping包时
+//	// 系统会调用deliverLocally进行本地交付
+//	// ICMP模块会生成ping回复并发送回源地址
 func (p *Processor) deliverLocally(packet *Packet) error {
 	// 模拟协议识别和分发过程
 	// 在真实实现中，这里需要：
@@ -452,7 +456,7 @@ func (p *Processor) deliverLocally(packet *Packet) error {
 	// 2. 根据协议类型调用相应的处理函数
 	// 3. 对于TCP/UDP，还需要解析端口号
 	// 4. 将数据传递给相应的应用程序或系统服务
-	
+
 	// 更新统计信息
 	// 记录成功处理的数据包数量
 	// 这些统计信息对于网络监控和故障诊断很重要

@@ -134,7 +134,7 @@ func (demo *RoutingAlgorithmsDemo) demonstrateLongestPrefixMatch() {
 
 	fmt.Println("添加重叠的路由条目：")
 	for _, route := range overlappingRoutes {
-		demo.table.AddRoute(route)
+		_ = demo.table.AddRoute(route)
 		fmt.Printf("✓ %s -> %s\n", route.Destination.String(), route.Gateway.String())
 	}
 	fmt.Println()
@@ -205,7 +205,7 @@ func (demo *RoutingAlgorithmsDemo) demonstrateRoutePriority() {
 
 	fmt.Println("添加到同一目标的多个路由：")
 	for i, route := range sameDestRoutes {
-		demo.table.AddRoute(route)
+		_ = demo.table.AddRoute(route)
 		fmt.Printf("✓ 路由 %d: %s via %s (metric: %d, type: %v)\n",
 			i+1, route.Destination.String(), route.Gateway.String(),
 			route.Metric, route.Type)
@@ -246,7 +246,7 @@ func (demo *RoutingAlgorithmsDemo) demonstrateDynamicRouting() {
 		Type:        routing.RouteTypeDynamic,
 		Age:         time.Now(),
 	}
-	demo.table.AddRoute(initialRoute)
+	_ = demo.table.AddRoute(initialRoute)
 	fmt.Printf("✓ 添加初始路由: %s via %s (metric: %d)\n",
 		initialRoute.Destination.String(), initialRoute.Gateway.String(), initialRoute.Metric)
 	fmt.Println()
@@ -261,7 +261,7 @@ func (demo *RoutingAlgorithmsDemo) demonstrateDynamicRouting() {
 		Type:        routing.RouteTypeDynamic,
 		Age:         time.Now(),
 	}
-	demo.table.AddRoute(betterRoute)
+	_ = demo.table.AddRoute(betterRoute)
 	fmt.Printf("✓ 更新路由: %s via %s (metric: %d)\n",
 		betterRoute.Destination.String(), betterRoute.Gateway.String(), betterRoute.Metric)
 	fmt.Println()
@@ -313,7 +313,7 @@ func (demo *RoutingAlgorithmsDemo) demonstrateRouteConvergence() {
 	}
 
 	for _, route := range routerARoutes {
-		demo.table.AddRoute(route)
+		_ = demo.table.AddRoute(route)
 		fmt.Printf("✓ %s via %s (metric: %d)\n",
 			route.Destination.String(), route.Gateway.String(), route.Metric)
 	}

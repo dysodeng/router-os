@@ -145,8 +145,8 @@ func demonstratePerformanceComparison() {
 	defer optimizedRouter.Stop()
 
 	// 启动路由器
-	basicRouter.Start()
-	optimizedRouter.Start()
+	_ = basicRouter.Start()
+	_ = optimizedRouter.Start()
 
 	// 添加测试路由
 	addTestRoutes(basicRouter, 1000)
@@ -220,7 +220,7 @@ func demonstrateCacheEffectiveness() {
 			} else {
 				ip = coldIPs[i%len(coldIPs)]
 			}
-			optimizedTable.LookupRoute(ip)
+			_, _ = optimizedTable.LookupRoute(ip)
 		}
 	})
 
@@ -233,7 +233,7 @@ func demonstrateCacheEffectiveness() {
 			} else {
 				ip = coldIPs[i%len(coldIPs)]
 			}
-			optimizedTable.LookupRoute(ip)
+			_, _ = optimizedTable.LookupRoute(ip)
 		}
 	})
 
@@ -293,7 +293,7 @@ func demonstrateMonitoringAndStats() {
 	// 执行一些查找操作
 	testIPs := generateTestIPs(500)
 	for _, ip := range testIPs {
-		optimizedTable.LookupRoute(ip)
+		_, _ = optimizedTable.LookupRoute(ip)
 	}
 
 	// 显示统计信息
@@ -337,7 +337,7 @@ func addTestRoutes(r *router.Router, count int) {
 		iface := fmt.Sprintf("eth%d", i%4)
 		metric := (i % 100) + 1
 
-		staticManager.AddStaticRoute(dest, gateway, iface, metric)
+		_ = staticManager.AddStaticRoute(dest, gateway, iface, metric)
 	}
 }
 
@@ -358,7 +358,7 @@ func generateTestIPs(count int) []net.IP {
 func measureLookupPerformance(r *router.Router, testIPs []net.IP) time.Duration {
 	start := time.Now()
 	for _, ip := range testIPs {
-		r.GetRoutingTable().LookupRoute(ip)
+		_, _ = r.GetRoutingTable().LookupRoute(ip)
 	}
 	return time.Since(start)
 }

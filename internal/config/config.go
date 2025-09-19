@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 )
@@ -181,7 +180,7 @@ func (cm *ConfigManager) LoadConfig() error {
 	}
 
 	// 读取配置文件
-	data, err := ioutil.ReadFile(cm.configFile)
+	data, err := os.ReadFile(cm.configFile)
 	if err != nil {
 		return fmt.Errorf("读取配置文件失败: %v", err)
 	}
@@ -212,7 +211,7 @@ func (cm *ConfigManager) saveConfigUnsafe() error {
 	}
 
 	// 写入文件
-	if err := ioutil.WriteFile(cm.configFile, data, 0644); err != nil {
+	if err := os.WriteFile(cm.configFile, data, 0644); err != nil {
 		return fmt.Errorf("写入配置文件失败: %v", err)
 	}
 

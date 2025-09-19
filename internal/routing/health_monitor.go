@@ -321,7 +321,9 @@ func (hm *HealthMonitor) measureLatency(gateway net.IP) float64 {
 	if err != nil {
 		return 1000.0 // 返回高延迟表示不可达
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	latency := time.Since(start).Seconds() * 1000 // 转换为毫秒
 	return latency
@@ -337,7 +339,7 @@ func (hm *HealthMonitor) measurePacketLoss(gateway net.IP) float64 {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:80", gateway.String()), hm.config.Timeout)
 		if err == nil {
 			successCount++
-			conn.Close()
+			_ = conn.Close()
 		}
 	}
 

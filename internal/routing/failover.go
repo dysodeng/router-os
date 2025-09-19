@@ -402,7 +402,7 @@ func (fm *FailoverManager) updateActiveRoutes() {
 
 				// 添加到负载均衡器
 				if fm.loadBalancer != nil {
-					fm.loadBalancer.AddRoute(route.Route, route.Weight)
+					_ = fm.loadBalancer.AddRoute(route.Route, route.Weight)
 				}
 			} else {
 				route.IsActive = false
@@ -545,7 +545,9 @@ func (fm *FailoverManager) performPingCheck(target string) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 	return nil
 }
 
@@ -556,7 +558,9 @@ func (fm *FailoverManager) performTCPCheck(target string, port int) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 	return nil
 }
 
@@ -569,7 +573,9 @@ func (fm *FailoverManager) performHTTPCheck(target string, port int, path string
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 	return nil
 }
 

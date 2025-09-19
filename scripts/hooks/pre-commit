@@ -42,19 +42,21 @@ if [[ -n "$files" ]]; then
     if [ $? -ne 0 ]; then
         echo "Go vet failed"
         PASS=false
-        break
     fi
 
     # 检测隐患变量
     # 需要安装：go install golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow
     # shellcheck disable=SC2046
     echo "Running shadow..."
-    go vet -vettool=$(which shadow)
-    # shellcheck disable=SC2181
-    if [ $? != 0 ]; then
-        printf "shadow error \n"
-        PASS=false
-        break
+    if command -v shadow &> /dev/null; then
+        go vet -vettool=$(which shadow) ./...
+        # shellcheck disable=SC2181
+        if [ $? != 0 ]; then
+            printf "shadow error \n"
+            PASS=false
+        fi
+    else
+        echo "shadow tool not found, skipping shadow check"
     fi
 
     # 运行 golangci-lint
@@ -63,7 +65,6 @@ if [[ -n "$files" ]]; then
     if [ $? -ne 0 ]; then
         echo "Golangci-lint encountered errors (warnings are allowed)"
         PASS=false
-        break
     fi
 fi
 

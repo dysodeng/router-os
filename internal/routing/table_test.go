@@ -73,7 +73,7 @@ func TestRemoveRoute(t *testing.T) {
 		Type:        RouteTypeStatic,
 	}
 
-	table.AddRoute(route)
+	_ = table.AddRoute(route)
 
 	// 删除路由
 	err := table.RemoveRoute(destNet, gateway, "eth0")
@@ -118,7 +118,7 @@ func TestLookupRoute(t *testing.T) {
 			Metric:      r.metric,
 			Type:        RouteTypeStatic,
 		}
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 
 	// 测试路由查找
@@ -127,10 +127,10 @@ func TestLookupRoute(t *testing.T) {
 		expectedDest string
 		shouldFind   bool
 	}{
-		{"192.168.1.100", "192.168.1.0/24", true},  // 匹配第一个网络
-		{"192.168.2.50", "192.168.2.0/24", true},   // 匹配第二个网络
-		{"8.8.8.8", "0.0.0.0/0", true},             // 匹配默认路由
-		{"192.168.1.1", "192.168.1.0/24", true},    // 匹配第一个网络
+		{"192.168.1.100", "192.168.1.0/24", true}, // 匹配第一个网络
+		{"192.168.2.50", "192.168.2.0/24", true},  // 匹配第二个网络
+		{"8.8.8.8", "0.0.0.0/0", true},            // 匹配默认路由
+		{"192.168.1.1", "192.168.1.0/24", true},   // 匹配第一个网络
 	}
 
 	for _, tc := range testCases {
@@ -176,8 +176,8 @@ func TestRouteMetricComparison(t *testing.T) {
 		Type:        RouteTypeStatic,
 	}
 
-	table.AddRoute(route1)
-	table.AddRoute(route2)
+	_ = table.AddRoute(route1)
+	_ = table.AddRoute(route2)
 
 	// 查找路由，应该返回度量值更低的路由
 	ip := net.ParseIP("192.168.1.100")
@@ -219,7 +219,7 @@ func TestGetAllRoutes(t *testing.T) {
 			Metric:      config.metric,
 			Type:        RouteTypeStatic,
 		}
-		table.AddRoute(route)
+		_ = table.AddRoute(route)
 	}
 
 	routes := table.GetAllRoutes()

@@ -716,7 +716,7 @@ func (pm *PolicyManager) executeActions(packet *PacketInfo, actions []PolicyActi
 			pm.stats.RedirectedPackets++
 		case Custom:
 			if handler, exists := pm.customActionHandlers[action.Parameters["handler"].(string)]; exists {
-				handler(packet, &action)
+				_ = handler(packet, &action)
 			}
 		}
 	}
