@@ -1,47 +1,39 @@
 {
-  "hostname": "",
-  "interfaces": [
-    {
-      "name": "eth0",
-      "ip_address": "10.0.0.1/24",
-      "netmask": "",
-      "mtu": 1500,
-      "enabled": true
-    },
-    {
-      "name": "eth1",
-      "ip_address": "192.168.1.1/24",
-      "netmask": "",
-      "mtu": 1500,
-      "enabled": true
-    }
-  ],
-  "static_routes": [
-    {
-      "destination": "192.168.2.0/24",
-      "gateway": "10.0.0.2",
-      "interface": "eth0",
-      "metric": 1
-    },
-    {
-      "destination": "172.16.0.0/16",
-      "gateway": "192.168.1.2",
-      "interface": "eth1",
-      "metric": 2
-    },
-    {
-      "destination": "0.0.0.0/0",
-      "gateway": "10.0.0.1",
-      "interface": "eth0",
-      "metric": 10
-    }
-  ],
-  "rip": {
-    "enabled": true,
-    "interfaces": null,
-    "update_timer": 0,
-    "timeout": 180
+  "web": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "username": "admin",
+    "password": "admin123",
+    "enable_https": false,
+    "cert_file": "",
+    "key_file": ""
   },
-  "log_level": "info",
-  "log_file": "/tmp/router-os.log"
+  "dhcp": {
+    "enabled": true,
+    "interface": "eth0",
+    "start_ip": "192.168.1.100",
+    "end_ip": "192.168.1.200",
+    "subnet_mask": "255.255.255.0",
+    "gateway": "192.168.1.1",
+    "dns_servers": ["8.8.8.8", "8.8.4.4"],
+    "lease_time": 3600
+  },
+  "vpn": {
+    "enabled": false,
+    "port": 1194,
+    "protocol": "udp",
+    "network": "10.8.0.0/24"
+  },
+  "firewall": {
+    "enabled": true,
+    "default_policy": "DROP"
+  },
+  "qos": {
+    "enabled": true,
+    "default_bandwidth": "100Mbps"
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/router-os.log"
+  }
 }

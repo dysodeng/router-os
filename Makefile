@@ -1,15 +1,23 @@
 # Router OS Makefile
 
+# 变量定义
+BINARY_NAME=router-os
+MAIN_PATH=./cmd/router
+BUILD_DIR=build
+VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
+
 .PHONY: build test clean run demo help install uninstall deploy setup-network package
 
 # 默认目标
-all: build
+all: clean build
 
 # 构建可执行文件
 build:
 	@echo "构建 Router OS..."
-	go build -o router-os main.go
-	@echo "构建完成: router-os"
+	@mkdir -p $(BUILD_DIR)
+	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
+	@echo "构建完成: $(BUILD_DIR)/$(BINARY_NAME)"
 
 # 运行测试
 test:
@@ -24,12 +32,18 @@ demo:
 # 运行路由器
 run: build
 	@echo "启动 Router OS..."
-	./router-os
+	sudo $(BUILD_DIR)/$(BINARY_NAME)
+
+# 开发模式运行
+dev:
+	@echo "开发模式运行..."
+	go run $(MAIN_PATH) -port 8080
 
 # 清理构建文件
 clean:
 	@echo "清理构建文件..."
-	rm -f router-os
+	@rm -rf $(BUILD_DIR)
+	@rm -f router-os
 	go clean
 
 # 格式化代码

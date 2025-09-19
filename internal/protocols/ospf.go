@@ -381,10 +381,16 @@ func (om *OSPFManager) Start() error {
 
 	om.running = true
 
-	// 启动定时器
+	// 启动定时器和状态机
 	go om.helloTimer()
 	go om.lsaAging()
 	go om.spfCalculation()
+	go om.neighborStateMachine()
+	go om.interfaceStateMachine()
+	go om.lsaFloodingProcess()
+
+	// 生成初始LSA
+	om.generateRouterLSA()
 
 	return nil
 }
@@ -875,4 +881,285 @@ func (om *OSPFManager) GetNeighbors() map[string]*OSPFNeighbor {
 		}
 	}
 	return neighbors
+}
+
+// neighborStateMachine 邻居状态机
+func (om *OSPFManager) neighborStateMachine() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !om.IsRunning() {
+				return
+			}
+			om.processNeighborStates()
+		}
+	}
+}
+
+// processNeighborStates 处理邻居状态
+func (om *OSPFManager) processNeighborStates() {
+	om.mu.Lock()
+	defer om.mu.Unlock()
+
+	now := time.Now()
+	for _, area := range om.areas {
+		for _, iface := range area.Interfaces {
+			for addr, neighbor := range iface.Neighbors {
+				// 检查邻居超时
+				if now.Sub(neighbor.LastSeen) > iface.DeadInterval {
+					om.logger.Info(fmt.Sprintf("邻居 %s 超时，状态从 %d 变为 Down", addr, neighbor.State))
+					neighbor.State = NeighborDown
+					// 清理邻居相关的LSA
+					om.cleanupNeighborLSAs(neighbor)
+					delete(iface.Neighbors, addr)
+					continue
+				}
+
+				// 处理邻居状态转换
+				om.processNeighborStateTransition(neighbor, iface)
+			}
+		}
+	}
+}
+
+// processNeighborStateTransition 处理邻居状态转换
+func (om *OSPFManager) processNeighborStateTransition(neighbor *OSPFNeighbor, iface *OSPFInterface) {
+	switch neighbor.State {
+	case NeighborInit:
+		// 如果在Hello包中看到自己的Router ID，转换到TwoWay状态
+		if om.isRouterIDInNeighborList(neighbor) {
+			neighbor.State = NeighborTwoWay
+			om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Init -> TwoWay", neighbor.IPAddress.String()))
+
+			// 如果需要建立邻接关系，转换到ExStart状态
+			if om.shouldEstablishAdjacency(neighbor, iface) {
+				neighbor.State = NeighborExStart
+				om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: TwoWay -> ExStart", neighbor.IPAddress.String()))
+			}
+		}
+	case NeighborExStart:
+		// 开始数据库描述交换
+		if om.startDatabaseExchange(neighbor) {
+			neighbor.State = NeighborExchange
+			om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: ExStart -> Exchange", neighbor.IPAddress.String()))
+		}
+	case NeighborExchange:
+		// 检查数据库描述交换是否完成
+		if om.isDatabaseExchangeComplete(neighbor) {
+			if len(neighbor.LSRequestList) > 0 {
+				neighbor.State = NeighborLoading
+				om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Exchange -> Loading", neighbor.IPAddress.String()))
+			} else {
+				neighbor.State = NeighborFull
+				om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Exchange -> Full", neighbor.IPAddress.String()))
+				om.triggerSPFCalculation()
+			}
+		}
+	case NeighborLoading:
+		// 检查LSA请求是否完成
+		if len(neighbor.LSRequestList) == 0 {
+			neighbor.State = NeighborFull
+			om.logger.Info(fmt.Sprintf("邻居 %s 状态转换: Loading -> Full", neighbor.IPAddress.String()))
+			om.triggerSPFCalculation()
+		}
+	}
+}
+
+// interfaceStateMachine 接口状态机
+func (om *OSPFManager) interfaceStateMachine() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !om.IsRunning() {
+				return
+			}
+			om.processInterfaceStates()
+		}
+	}
+}
+
+// processInterfaceStates 处理接口状态
+func (om *OSPFManager) processInterfaceStates() {
+	om.mu.Lock()
+	defer om.mu.Unlock()
+
+	// 检查接口状态变化
+	activeInterfaces := om.interfaceManager.GetActiveInterfaces()
+	activeMap := make(map[string]bool)
+
+	// 标记活跃接口
+	for _, iface := range activeInterfaces {
+		activeMap[iface.Name] = true
+	}
+
+	// 处理接口状态变化
+	for _, area := range om.areas {
+		for name, ospfIface := range area.Interfaces {
+			if !activeMap[name] {
+				// 接口已关闭，清理相关信息
+				om.logger.Info(fmt.Sprintf("接口 %s 已关闭，清理OSPF信息", name))
+				om.cleanupInterface(ospfIface)
+				delete(area.Interfaces, name)
+			}
+		}
+	}
+
+	// 添加新的活跃接口
+	for _, iface := range activeInterfaces {
+		found := false
+		for _, area := range om.areas {
+			if _, exists := area.Interfaces[iface.Name]; exists {
+				found = true
+				break
+			}
+		}
+		if !found {
+			om.addNewInterface(iface)
+		}
+	}
+}
+
+// lsaFloodingProcess LSA泛洪处理
+func (om *OSPFManager) lsaFloodingProcess() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !om.IsRunning() {
+				return
+			}
+			om.processLSAFlooding()
+		}
+	}
+}
+
+// processLSAFlooding 处理LSA泛洪
+func (om *OSPFManager) processLSAFlooding() {
+	om.mu.Lock()
+	defer om.mu.Unlock()
+
+	for _, area := range om.areas {
+		for _, lsa := range area.LSDB {
+			// 检查LSA是否需要重新泛洪
+			if om.shouldFloodLSA(lsa) {
+				om.floodLSA(lsa, area)
+			}
+		}
+	}
+}
+
+// generateRouterLSA 生成路由器LSA
+func (om *OSPFManager) generateRouterLSA() {
+	om.mu.Lock()
+	defer om.mu.Unlock()
+
+	for _, area := range om.areas {
+		routerLSA := &OSPFLSA{
+			Age:         0,
+			Type:        RouterLSA,
+			LinkStateID: om.routerID,
+			AdvRouter:   om.routerID,
+			SeqNumber:   uint32(time.Now().Unix()),
+			Data:        om.buildRouterLSAData(area),
+		}
+
+		// 计算校验和
+		routerLSA.Checksum = om.calculateLSAChecksum(routerLSA)
+		routerLSA.Length = uint16(len(routerLSA.Data) + 20) // LSA头部20字节
+
+		// 添加到LSDB
+		lsaKey := fmt.Sprintf("%d-%d", routerLSA.Type, routerLSA.LinkStateID)
+		area.LSDB[lsaKey] = routerLSA
+
+		om.logger.Info(fmt.Sprintf("生成路由器LSA，区域 %d", area.AreaID))
+
+		// 泛洪LSA
+		om.floodLSA(routerLSA, area)
+	}
+}
+
+// 辅助方法实现
+func (om *OSPFManager) isRouterIDInNeighborList(neighbor *OSPFNeighbor) bool {
+	// 简化实现，实际应该检查Hello包中的邻居列表
+	return true
+}
+
+func (om *OSPFManager) shouldEstablishAdjacency(neighbor *OSPFNeighbor, iface *OSPFInterface) bool {
+	// 简化实现，实际应该根据接口类型和DR/BDR选举结果决定
+	return true
+}
+
+func (om *OSPFManager) startDatabaseExchange(neighbor *OSPFNeighbor) bool {
+	// 简化实现，实际应该发送DD包
+	return true
+}
+
+func (om *OSPFManager) isDatabaseExchangeComplete(neighbor *OSPFNeighbor) bool {
+	// 简化实现，实际应该检查DD交换状态
+	return len(neighbor.DBSummary) == 0
+}
+
+func (om *OSPFManager) triggerSPFCalculation() {
+	// 触发SPF计算
+	go om.calculateSPF()
+}
+
+func (om *OSPFManager) cleanupNeighborLSAs(neighbor *OSPFNeighbor) {
+	// 清理邻居相关的LSA
+	om.logger.Debug(fmt.Sprintf("清理邻居 %s 的LSA", neighbor.IPAddress.String()))
+}
+
+func (om *OSPFManager) cleanupInterface(iface *OSPFInterface) {
+	// 清理接口相关信息
+	for _, neighbor := range iface.Neighbors {
+		neighbor.State = NeighborDown
+	}
+	om.logger.Debug(fmt.Sprintf("清理接口 %s 的OSPF信息", iface.Name))
+}
+
+func (om *OSPFManager) addNewInterface(iface *interfaces.Interface) {
+	ospfIface := &OSPFInterface{
+		Name:          iface.Name,
+		Type:          Broadcast,
+		IPAddress:     iface.IPAddress,
+		NetworkMask:   iface.Netmask,
+		AreaID:        OSPFBackboneArea,
+		Cost:          calculateInterfaceCost(iface),
+		Priority:      1,
+		HelloInterval: OSPFHelloInterval,
+		DeadInterval:  OSPFDeadInterval,
+		Neighbors:     make(map[string]*OSPFNeighbor),
+	}
+
+	om.areas[OSPFBackboneArea].Interfaces[iface.Name] = ospfIface
+	om.logger.Info(fmt.Sprintf("添加新的OSPF接口: %s", iface.Name))
+}
+
+func (om *OSPFManager) shouldFloodLSA(lsa *OSPFLSA) bool {
+	// 简化实现，实际应该检查LSA年龄和序列号
+	return lsa.Age < uint16(OSPFLSRefreshTime.Seconds())
+}
+
+func (om *OSPFManager) floodLSA(lsa *OSPFLSA, area *OSPFArea) {
+	// 简化实现，实际应该向所有邻居发送LSA
+	om.logger.Debug(fmt.Sprintf("泛洪LSA类型 %d，区域 %d", lsa.Type, area.AreaID))
+}
+
+func (om *OSPFManager) buildRouterLSAData(area *OSPFArea) []byte {
+	// 简化实现，构建路由器LSA数据
+	data := make([]byte, 4) // 最小LSA数据
+	return data
+}
+
+func (om *OSPFManager) calculateLSAChecksum(lsa *OSPFLSA) uint16 {
+	// 简化实现，计算LSA校验和
+	return 0x1234
 }

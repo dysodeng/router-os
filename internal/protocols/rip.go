@@ -101,6 +101,105 @@ type RIPPacket struct {
 	Entries []RIPEntry
 }
 
+// RIP状态机状态
+type RIPState uint8
+
+const (
+	RIPStateIdle RIPState = iota
+	RIPStateRunning
+	RIPStateStopping
+)
+
+// RIP邻居状态
+type RIPNeighborState uint8
+
+const (
+	RIPNeighborDown RIPNeighborState = iota
+	RIPNeighborUp
+	RIPNeighborTimeout
+)
+
+// RIP认证类型
+type RIPAuthType uint16
+
+const (
+	RIPAuthNone   RIPAuthType = 0
+	RIPAuthSimple RIPAuthType = 2
+	RIPAuthMD5    RIPAuthType = 3
+)
+
+// RIP认证结构
+type RIPAuth struct {
+	Type     RIPAuthType
+	Password string
+	KeyID    uint8
+	AuthLen  uint8
+	SeqNum   uint32
+}
+
+// RIP接口配置
+type RIPInterfaceConfig struct {
+	SendVersion    uint8         // 发送版本
+	ReceiveVersion uint8         // 接收版本
+	Authentication *RIPAuth      // 认证配置
+	SplitHorizon   bool          // 水平分割
+	PoisonReverse  bool          // 毒性逆转
+	Passive        bool          // 被动接口
+	UpdateTimer    time.Duration // 更新定时器
+	TimeoutTimer   time.Duration // 超时定时器
+	GarbageTimer   time.Duration // 垃圾回收定时器
+}
+
+// RIP邻居信息
+type RIPNeighbor struct {
+	Address    net.IP
+	State      RIPNeighborState
+	LastUpdate time.Time
+	Version    uint8
+	Routes     map[string]*RIPEntry
+	Interface  string
+	mu         sync.RWMutex
+}
+
+// RIP接口
+type RIPInterface struct {
+	Name         string
+	Address      net.IP
+	Network      *net.IPNet
+	Config       *RIPInterfaceConfig
+	Neighbors    map[string]*RIPNeighbor
+	LastUpdate   time.Time
+	UpdateTimer  *time.Timer
+	TimeoutTimer *time.Timer
+	GarbageTimer *time.Timer
+	mu           sync.RWMutex
+}
+
+// RIP路由表项增强
+type RIPRouteEntry struct {
+	*RIPEntry
+	State        uint8
+	ChangeFlag   bool
+	TimeoutTimer *time.Timer
+	GarbageTimer *time.Timer
+	Source       string // 路由来源
+}
+
+// RIP统计信息
+type RIPStatistics struct {
+	PacketsSent       uint64
+	PacketsReceived   uint64
+	RequestsSent      uint64
+	RequestsReceived  uint64
+	ResponsesSent     uint64
+	ResponsesReceived uint64
+	BadPackets        uint64
+	BadRoutes         uint64
+	TriggeredUpdates  uint64
+	RouteChanges      uint64
+	mu                sync.RWMutex
+}
+
 // RIPManager RIP协议管理器
 // 这是RIP协议的核心控制器，负责协议的所有功能
 // 包括路由学习、路由通告、邻居管理等
@@ -130,6 +229,13 @@ type RIPManager struct {
 	// value: 最后一次收到该邻居更新的时间
 	// 用于检测邻居是否超时，实现故障检测
 	neighbors map[string]time.Time
+
+	// 新增字段
+	state      RIPState                  // 协议状态
+	interfaces map[string]*RIPInterface  // RIP接口列表
+	routes     map[string]*RIPRouteEntry // RIP路由表
+	statistics *RIPStatistics            // 统计信息
+	logger     *logging.Logger           // 日志记录器
 }
 
 // NewRIPManager 创建RIP协议管理器
@@ -158,8 +264,13 @@ func NewRIPManager(routingTable routing.RoutingTableInterface, interfaceManager 
 	return &RIPManager{
 		routingTable:     routingTable,
 		interfaceManager: interfaceManager,
-		running:          false,                      // 初始状态为停止
-		neighbors:        make(map[string]time.Time), // 初始化空的邻居表
+		running:          false,
+		neighbors:        make(map[string]time.Time),
+		state:            RIPStateIdle,
+		interfaces:       make(map[string]*RIPInterface),
+		routes:           make(map[string]*RIPRouteEntry),
+		statistics:       &RIPStatistics{},
+		logger:           logging.NewLogger(logging.LogLevelInfo, "RIP"),
 	}
 }
 
@@ -200,6 +311,14 @@ func (rm *RIPManager) Start() error {
 
 	// 设置运行状态
 	rm.running = true
+	rm.state = RIPStateRunning
+	rm.logger.Info("启动RIP协议")
+
+	// 初始化接口
+	if err := rm.initializeInterfaces(); err != nil {
+		rm.logger.Error("初始化接口失败: %v", err)
+		return err
+	}
 
 	// 启动定期路由更新goroutine
 	// 这个goroutine负责每30秒向所有邻居发送完整的路由表
@@ -210,6 +329,9 @@ func (rm *RIPManager) Start() error {
 	// 这个goroutine负责检测邻居路由器是否失效
 	// 如果180秒内没有收到邻居的更新，将其标记为不可达
 	go rm.neighborTimeout()
+
+	// 启动状态机
+	go rm.stateMachine()
 
 	return nil
 }
@@ -245,6 +367,23 @@ func (rm *RIPManager) Stop() {
 	// 设置运行状态为false
 	// 所有相关的goroutine会检测到这个变化并退出
 	rm.running = false
+	rm.state = RIPStateStopping
+	rm.logger.Info("停止RIP协议")
+
+	// 清理接口定时器
+	for _, ripIface := range rm.interfaces {
+		if ripIface.UpdateTimer != nil {
+			ripIface.UpdateTimer.Stop()
+		}
+		if ripIface.TimeoutTimer != nil {
+			ripIface.TimeoutTimer.Stop()
+		}
+		if ripIface.GarbageTimer != nil {
+			ripIface.GarbageTimer.Stop()
+		}
+	}
+
+	rm.state = RIPStateIdle
 }
 
 // periodicUpdate 定期发送路由更新
@@ -636,4 +775,211 @@ func (rm *RIPManager) GetNeighbors() map[string]time.Time {
 		neighbors[k] = v
 	}
 	return neighbors
+}
+
+// initializeInterfaces 初始化RIP接口
+func (rm *RIPManager) initializeInterfaces() error {
+	interfaces := rm.interfaceManager.GetActiveInterfaces()
+	for _, iface := range interfaces {
+		ripIface := &RIPInterface{
+			Name:      iface.Name,
+			Address:   iface.IPAddress,
+			Network:   &net.IPNet{IP: iface.IPAddress.Mask(iface.Netmask), Mask: iface.Netmask},
+			Neighbors: make(map[string]*RIPNeighbor),
+			Config: &RIPInterfaceConfig{
+				SendVersion:    RIPVersion,
+				ReceiveVersion: RIPVersion,
+				SplitHorizon:   true,
+				PoisonReverse:  false,
+				Passive:        false,
+				UpdateTimer:    RIPUpdateTimer,
+				TimeoutTimer:   RIPTimeout,
+				GarbageTimer:   RIPTimeout * 2,
+			},
+		}
+		rm.interfaces[iface.Name] = ripIface
+		rm.logger.Debug("初始化RIP接口: %s", iface.Name)
+	}
+	return nil
+}
+
+// stateMachine RIP状态机
+func (rm *RIPManager) stateMachine() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !rm.IsRunning() {
+				return
+			}
+			rm.processStateMachine()
+		}
+	}
+}
+
+// processStateMachine 处理状态机逻辑
+func (rm *RIPManager) processStateMachine() {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	switch rm.state {
+	case RIPStateRunning:
+		// 检查接口状态
+		rm.checkInterfaceStates()
+		// 处理邻居状态
+		rm.processNeighborStates()
+	case RIPStateStopping:
+		// 清理资源
+		rm.cleanupResources()
+	}
+}
+
+// checkInterfaceStates 检查接口状态
+func (rm *RIPManager) checkInterfaceStates() {
+	activeInterfaces := rm.interfaceManager.GetActiveInterfaces()
+	activeMap := make(map[string]bool)
+
+	// 标记活跃接口
+	for _, iface := range activeInterfaces {
+		activeMap[iface.Name] = true
+		if _, exists := rm.interfaces[iface.Name]; !exists {
+			// 新接口，添加到RIP管理
+			rm.addInterface(iface)
+		}
+	}
+
+	// 移除非活跃接口
+	for name, ripIface := range rm.interfaces {
+		if !activeMap[name] {
+			rm.removeInterface(ripIface)
+			delete(rm.interfaces, name)
+		}
+	}
+}
+
+// processNeighborStates 处理邻居状态
+func (rm *RIPManager) processNeighborStates() {
+	now := time.Now()
+	for _, ripIface := range rm.interfaces {
+		for addr, neighbor := range ripIface.Neighbors {
+			switch neighbor.State {
+			case RIPNeighborUp:
+				if now.Sub(neighbor.LastUpdate) > RIPTimeout {
+					neighbor.State = RIPNeighborTimeout
+					rm.logger.Info("邻居 %s 超时", addr)
+				}
+			case RIPNeighborTimeout:
+				// 清理超时邻居的路由
+				rm.removeNeighborRoutes(neighbor)
+				delete(ripIface.Neighbors, addr)
+				rm.logger.Info("删除超时邻居 %s", addr)
+			}
+		}
+	}
+}
+
+// addInterface 添加接口到RIP管理
+func (rm *RIPManager) addInterface(iface *interfaces.Interface) {
+	ripIface := &RIPInterface{
+		Name:      iface.Name,
+		Address:   iface.IPAddress,
+		Network:   &net.IPNet{IP: iface.IPAddress.Mask(iface.Netmask), Mask: iface.Netmask},
+		Neighbors: make(map[string]*RIPNeighbor),
+		Config: &RIPInterfaceConfig{
+			SendVersion:    RIPVersion,
+			ReceiveVersion: RIPVersion,
+			SplitHorizon:   true,
+			PoisonReverse:  false,
+			Passive:        false,
+			UpdateTimer:    RIPUpdateTimer,
+			TimeoutTimer:   RIPTimeout,
+			GarbageTimer:   RIPTimeout * 2,
+		},
+	}
+	rm.interfaces[iface.Name] = ripIface
+	rm.logger.Info("添加RIP接口: %s", iface.Name)
+}
+
+// removeInterface 从RIP管理中移除接口
+func (rm *RIPManager) removeInterface(ripIface *RIPInterface) {
+	// 停止定时器
+	if ripIface.UpdateTimer != nil {
+		ripIface.UpdateTimer.Stop()
+	}
+	if ripIface.TimeoutTimer != nil {
+		ripIface.TimeoutTimer.Stop()
+	}
+	if ripIface.GarbageTimer != nil {
+		ripIface.GarbageTimer.Stop()
+	}
+
+	// 清理邻居
+	for _, neighbor := range ripIface.Neighbors {
+		rm.removeNeighborRoutes(neighbor)
+	}
+
+	rm.logger.Info("移除RIP接口: %s", ripIface.Name)
+}
+
+// removeNeighborRoutes 删除邻居的路由
+func (rm *RIPManager) removeNeighborRoutes(neighbor *RIPNeighbor) {
+	for _, route := range neighbor.Routes {
+		rm.routingTable.RemoveRoute(&route.Network, neighbor.Address, neighbor.Interface)
+	}
+}
+
+// cleanupResources 清理资源
+func (rm *RIPManager) cleanupResources() {
+	// 清理所有接口
+	for name, ripIface := range rm.interfaces {
+		rm.removeInterface(ripIface)
+		delete(rm.interfaces, name)
+	}
+
+	// 清理邻居信息
+	rm.neighbors = make(map[string]time.Time)
+
+	// 清理路由
+	rm.routes = make(map[string]*RIPRouteEntry)
+}
+
+// GetStatistics 获取RIP统计信息
+func (rm *RIPManager) GetStatistics() *RIPStatistics {
+	rm.statistics.mu.RLock()
+	defer rm.statistics.mu.RUnlock()
+
+	stats := &RIPStatistics{
+		PacketsSent:       rm.statistics.PacketsSent,
+		PacketsReceived:   rm.statistics.PacketsReceived,
+		RequestsSent:      rm.statistics.RequestsSent,
+		RequestsReceived:  rm.statistics.RequestsReceived,
+		ResponsesSent:     rm.statistics.ResponsesSent,
+		ResponsesReceived: rm.statistics.ResponsesReceived,
+		BadPackets:        rm.statistics.BadPackets,
+		BadRoutes:         rm.statistics.BadRoutes,
+		TriggeredUpdates:  rm.statistics.TriggeredUpdates,
+		RouteChanges:      rm.statistics.RouteChanges,
+	}
+	return stats
+}
+
+// GetState 获取RIP状态
+func (rm *RIPManager) GetState() RIPState {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	return rm.state
+}
+
+// GetInterfaces 获取RIP接口信息
+func (rm *RIPManager) GetInterfaces() map[string]*RIPInterface {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+
+	interfaces := make(map[string]*RIPInterface)
+	for k, v := range rm.interfaces {
+		interfaces[k] = v
+	}
+	return interfaces
 }

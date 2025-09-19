@@ -342,11 +342,14 @@ func (bm *BGPManager) Start() error {
 	bm.logger.Info("启动BGP协议")
 	bm.running = true
 
-	// 启动定时器
+	// 启动定时器和状态机
 	go bm.keepaliveTimer()
 	go bm.holdTimer()
 	go bm.connectRetryTimer()
 	go bm.routeSelection()
+	go bm.peerStateMachine()
+	go bm.routeAdvertisement()
+	go bm.policyEngine()
 
 	return nil
 }
@@ -461,9 +464,9 @@ func (bm *BGPManager) sendOpenMessage(peer *BGPPeer) bool {
 		HoldTime:      uint16(peer.HoldTime.Seconds()),
 		BGPIdentifier: bm.routerID,
 	}
-	
+
 	// 这里应该实际发送消息，简化实现
-	bm.logger.Debug(fmt.Sprintf("发送BGP Open消息到 %s (AS: %d, Hold: %d)", 
+	bm.logger.Debug(fmt.Sprintf("发送BGP Open消息到 %s (AS: %d, Hold: %d)",
 		peer.Address, open.MyAS, open.HoldTime))
 	return true
 }
@@ -781,7 +784,7 @@ func (bm *BGPManager) sendKeepalive(peer *BGPPeer) {
 			Type: BGPKeepalive,
 		},
 	}
-	
+
 	// 这里应该实际发送消息，简化实现
 	bm.logger.Debug(fmt.Sprintf("发送BGP Keepalive到 %s (Type: %d)", peer.Address, keepalive.Header.Type))
 	peer.LastKeepalive = time.Now()
@@ -884,9 +887,9 @@ func (bm *BGPManager) sendNotification(peer *BGPPeer, errorCode, errorSubcode ui
 		ErrorSubcode: errorSubcode,
 		Data:         data,
 	}
-	
+
 	// 这里应该实际发送消息，简化实现
-	bm.logger.Warn(fmt.Sprintf("发送BGP Notification到 %s (错误: %d.%d, 数据长度: %d)", 
+	bm.logger.Warn(fmt.Sprintf("发送BGP Notification到 %s (错误: %d.%d, 数据长度: %d)",
 		peer.Address, notification.ErrorCode, notification.ErrorSubcode, len(notification.Data)))
 	peer.State = BGPIdle
 }
@@ -945,4 +948,232 @@ func (bm *BGPManager) GetRIB() (map[string]*BGPRIBEntry, map[string]*BGPRIBEntry
 	}
 
 	return ribIn, ribOut, locRIB
+}
+
+// peerStateMachine BGP邻居状态机
+func (bm *BGPManager) peerStateMachine() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !bm.IsRunning() {
+				return
+			}
+			bm.processPeerStates()
+		}
+	}
+}
+
+// processPeerStates 处理邻居状态
+func (bm *BGPManager) processPeerStates() {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	for _, peer := range bm.peers {
+		bm.processPeerStateTransition(peer)
+	}
+}
+
+// processPeerStateTransition 处理邻居状态转换
+func (bm *BGPManager) processPeerStateTransition(peer *BGPPeer) {
+	peer.mu.Lock()
+	defer peer.mu.Unlock()
+
+	now := time.Now()
+
+	switch peer.State {
+	case BGPIdle:
+		// 空闲状态，尝试连接
+		if now.Sub(peer.LastUpdate) > peer.ConnectRetryTime {
+			bm.logger.Info("尝试连接BGP邻居: %s", peer.Address.String())
+			go bm.connectToPeer(peer)
+		}
+
+	case BGPConnect:
+		// 连接状态，等待连接建立
+		// 这里应该检查TCP连接状态
+
+	case BGPActive:
+		// 活跃状态，等待连接
+
+	case BGPOpenSent:
+		// 已发送Open消息，等待回复
+		if now.Sub(peer.LastUpdate) > peer.HoldTime {
+			bm.logger.Warn("BGP邻居 %s Open消息超时", peer.Address.String())
+			peer.State = BGPIdle
+		}
+
+	case BGPOpenConfirm:
+		// Open确认状态，等待Keepalive
+		if now.Sub(peer.LastKeepalive) > peer.HoldTime {
+			bm.logger.Warn("BGP邻居 %s Keepalive超时", peer.Address.String())
+			peer.State = BGPIdle
+		}
+
+	case BGPEstablished:
+		// 已建立状态，检查Keepalive超时
+		if now.Sub(peer.LastKeepalive) > peer.HoldTime {
+			bm.logger.Warn("BGP邻居 %s 连接超时", peer.Address.String())
+			peer.State = BGPIdle
+			// 撤销从该邻居学到的所有路由
+			bm.withdrawRoutesFromPeer(peer)
+		}
+	}
+}
+
+// routeAdvertisement 路由通告处理
+func (bm *BGPManager) routeAdvertisement() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !bm.IsRunning() {
+				return
+			}
+			bm.processRouteAdvertisement()
+		}
+	}
+}
+
+// processRouteAdvertisement 处理路由通告
+func (bm *BGPManager) processRouteAdvertisement() {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	// 向所有已建立的邻居通告路由
+	for _, peer := range bm.peers {
+		if peer.State == BGPEstablished {
+			bm.advertiseRoutesToPeer(peer)
+		}
+	}
+}
+
+// advertiseRoutesToPeer 向邻居通告路由
+func (bm *BGPManager) advertiseRoutesToPeer(peer *BGPPeer) {
+	// 从Loc-RIB中选择要通告的路由
+	for prefixKey, ribEntry := range bm.locRIB {
+		if ribEntry.BestRoute != nil {
+			// 应用出站策略
+			if bm.shouldAdvertiseRoute(ribEntry.BestRoute, peer) {
+				bm.sendUpdateMessage(peer, ribEntry.BestRoute)
+				bm.logger.Debug("向邻居 %s 通告路由 %s", peer.Address.String(), prefixKey)
+			}
+		}
+	}
+}
+
+// policyEngine 策略引擎
+func (bm *BGPManager) policyEngine() {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if !bm.IsRunning() {
+				return
+			}
+			bm.processPolicies()
+		}
+	}
+}
+
+// processPolicies 处理策略
+func (bm *BGPManager) processPolicies() {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	// 应用入站策略
+	bm.applyInboundPolicies()
+
+	// 应用出站策略
+	bm.applyOutboundPolicies()
+
+	// 重新运行路由选择
+	bm.runRouteSelection()
+}
+
+// applyInboundPolicies 应用入站策略
+func (bm *BGPManager) applyInboundPolicies() {
+	for prefixKey, ribEntry := range bm.ribIn {
+		for _, route := range ribEntry.Routes {
+			// 应用入站过滤器
+			if bm.applyInboundFilter(route) {
+				// 修改路由属性
+				bm.modifyRouteAttributes(route, "inbound")
+			} else {
+				// 过滤掉该路由
+				bm.logger.Debug("入站策略过滤路由: %s", prefixKey)
+			}
+		}
+	}
+}
+
+// applyOutboundPolicies 应用出站策略
+func (bm *BGPManager) applyOutboundPolicies() {
+	for prefixKey, ribEntry := range bm.ribOut {
+		for _, route := range ribEntry.Routes {
+			// 应用出站过滤器
+			if !bm.applyOutboundFilter(route) {
+				// 过滤掉该路由
+				bm.logger.Debug("出站策略过滤路由: %s", prefixKey)
+			}
+		}
+	}
+}
+
+// 辅助方法实现
+func (bm *BGPManager) shouldAdvertiseRoute(route *BGPRoute, peer *BGPPeer) bool {
+	// 简化实现，实际应该检查路由策略、AS路径等
+	return true
+}
+
+func (bm *BGPManager) sendUpdateMessage(peer *BGPPeer, route *BGPRoute) {
+	// 简化实现，实际应该构造并发送BGP Update消息
+	bm.logger.Debug("发送Update消息到邻居 %s", peer.Address.String())
+}
+
+func (bm *BGPManager) applyInboundFilter(route *BGPRoute) bool {
+	// 简化实现，实际应该根据配置的策略进行过滤
+	return true
+}
+
+func (bm *BGPManager) applyOutboundFilter(route *BGPRoute) bool {
+	// 简化实现，实际应该根据配置的策略进行过滤
+	return true
+}
+
+func (bm *BGPManager) modifyRouteAttributes(route *BGPRoute, direction string) {
+	// 简化实现，实际应该根据策略修改路由属性
+	if direction == "inbound" {
+		// 可能修改Local Preference等属性
+	} else {
+		// 可能修改MED等属性
+	}
+}
+
+// GetPeerStates 获取所有邻居状态
+func (bm *BGPManager) GetPeerStates() map[string]BGPPeerState {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
+
+	states := make(map[string]BGPPeerState)
+	for addr, peer := range bm.peers {
+		peer.mu.RLock()
+		states[addr] = peer.State
+		peer.mu.RUnlock()
+	}
+	return states
+}
+
+// GetRouteCount 获取路由数量统计
+func (bm *BGPManager) GetRouteCount() (int, int, int) {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
+
+	return len(bm.ribIn), len(bm.ribOut), len(bm.locRIB)
 }

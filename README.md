@@ -1,167 +1,235 @@
 # Router OS
 
-一个使用 Go 语言实现的简单路由器操作系统，支持基本的路由功能、协议管理和网络接口管理。
+一个用Go语言实现的高性能路由器操作系统，提供完整的网络路由、转发和管理功能。
 
-## 功能特性
+## 特性
 
-- **路由表管理**: 支持静态路由和动态路由
-- **协议支持**: 
-  - 静态路由配置
-  - RIP (Routing Information Protocol) 协议
+### 核心功能
+- **高性能路由表**: 基于Trie树的快速路由查找
+- **多协议支持**: RIP, OSPF, BGP, IS-IS等动态路由协议
+- **数据包转发**: 高效的数据包处理和转发引擎
 - **网络接口管理**: 自动发现和管理网络接口
-- **数据包处理**: 基本的数据包转发和处理逻辑
-- **配置管理**: JSON 格式的配置文件支持
-- **CLI 接口**: 命令行管理界面
-- **日志记录**: 分级日志系统
-- **系统监控**: 实时系统状态监控
+- **ARP表管理**: 自动ARP学习和老化机制
 
-## 项目结构
+### 高级功能
+- **负载均衡**: 支持多种负载均衡算法
+- **故障转移**: 自动路径故障检测和切换
+- **防火墙**: 基于规则的数据包过滤
+- **QoS流量控制**: 带宽限制和流量整形
+- **DHCP服务器**: 动态IP地址分配
+- **VPN支持**: OpenVPN、WireGuard、IPSec协议
 
-```
-router-os/
-├── main.go                     # 主程序入口
-├── go.mod                      # Go 模块文件
-├── examples/                   # 示例程序
-│   └── basic_test.go          # 基本功能测试
-├── internal/                   # 内部包
-│   ├── router/                # 路由器核心
-│   │   └── router.go
-│   ├── routing/               # 路由表管理
-│   │   └── table.go
-│   ├── interfaces/            # 网络接口管理
-│   │   └── manager.go
-│   ├── packet/                # 数据包处理
-│   │   └── processor.go
-│   ├── protocols/             # 路由协议
-│   │   ├── static.go          # 静态路由
-│   │   └── rip.go             # RIP 协议
-│   ├── config/                # 配置管理
-│   │   └── config.go
-│   ├── cli/                   # 命令行接口
-│   │   └── cli.go
-│   ├── logging/               # 日志系统
-│   │   └── logger.go
-│   └── monitoring/            # 系统监控
-│       └── monitor.go
-└── README.md                  # 项目文档
-```
+### 管理功能
+- **Web管理界面**: 现代化的Web UI管理
+- **CLI管理**: 功能丰富的命令行界面
+- **配置管理**: 灵活的配置文件支持
+- **性能监控**: 实时性能指标收集和分析
 
 ## 快速开始
 
-### 1. 初始化项目
+### 系统要求
+
+- Go 1.19+
+- Linux系统（推荐Ubuntu 20.04+）
+- 管理员权限（用于网络接口操作）
+
+### 编译
 
 ```bash
+# 克隆项目
+git clone <repository-url>
 cd router-os
-go mod init router-os
-go mod tidy
+
+# 编译主程序
+go build -o router-os ./cmd/router
+
+# 或使用Makefile
+make build
 ```
 
-### 2. 运行路由器
+### 运行
 
 ```bash
-go run main.go
+# 使用默认配置运行
+sudo ./router-os
+
+# 指定端口和配置
+sudo ./router-os -port 8080 -host 0.0.0.0
+
+# 查看帮助
+./router-os -help
 ```
 
-### 3. 运行测试示例
+### Web管理界面
 
-```bash
-go run examples/basic_test.go
-```
+启动后访问 http://localhost:8080 进入Web管理界面
 
-## 配置文件
+- 默认用户名: `admin`
+- 默认密码: `admin123`
 
-路由器使用 JSON 格式的配置文件，默认位置为 `config.json`：
+### 配置
+
+编辑 `config.json` 文件来配置路由器：
 
 ```json
 {
-  "interfaces": [
-    {
-      "name": "eth0",
-      "ip_address": "10.0.0.1/24",
-      "mtu": 1500,
-      "enabled": true
-    }
-  ],
-  "static_routes": [
-    {
-      "destination": "192.168.1.0/24",
-      "gateway": "10.0.0.1",
-      "interface": "eth0",
-      "metric": 1
-    }
-  ],
-  "rip": {
+  "web": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "username": "admin",
+    "password": "admin123"
+  },
+  "dhcp": {
     "enabled": true,
-    "update_interval": 30,
-    "timeout": 180,
-    "garbage_collection": 120
+    "start_ip": "192.168.1.100",
+    "end_ip": "192.168.1.200",
+    "gateway": "192.168.1.1"
+  },
+  "firewall": {
+    "enabled": true,
+    "default_policy": "DROP"
   }
 }
 ```
 
-## CLI 命令
+## 架构
 
-启动路由器后，可以使用以下 CLI 命令：
+Router OS采用模块化设计，主要组件包括：
 
-- `show routes` - 显示路由表
-- `show interfaces` - 显示网络接口状态
-- `show stats` - 显示系统统计信息
-- `add route <dest> <gateway> <interface> [metric]` - 添加静态路由
-- `del route <dest>` - 删除路由
-- `rip start` - 启动 RIP 协议
-- `rip stop` - 停止 RIP 协议
-- `rip show` - 显示 RIP 状态
-- `help` - 显示帮助信息
-- `exit` - 退出程序
+### 核心模块
+- **路由表模块** (`internal/routing`): 管理路由信息和查找
+- **转发引擎** (`internal/forwarding`): 处理数据包转发逻辑
+- **接口管理** (`internal/interfaces`): 网络接口的配置和监控
+- **ARP管理** (`internal/arp`): ARP表维护和解析
 
-## 日志级别
+### 网络服务
+- **DHCP服务器** (`internal/dhcp`): 动态IP地址分配
+- **防火墙** (`internal/firewall`): 数据包过滤和安全
+- **QoS引擎** (`internal/qos`): 流量控制和带宽管理
+- **VPN服务** (`internal/vpn`): 虚拟专用网络
 
-支持以下日志级别：
-- `DEBUG` - 调试信息
-- `INFO` - 一般信息
-- `WARN` - 警告信息
-- `ERROR` - 错误信息
+### 管理界面
+- **Web界面** (`internal/web`): HTTP管理接口
+- **CLI系统** (`internal/cli`): 命令行管理界面
 
-## 监控功能
+### 协议支持
+- **静态路由** (`internal/protocols/static`)
+- **RIP协议** (`internal/protocols/rip`)
+- **OSPF协议** (`internal/protocols/ospf`)
+- **BGP协议** (`internal/protocols/bgp`)
 
-系统提供以下监控指标：
-- 系统运行时间
-- 内存使用情况
-- Goroutine 数量
-- 路由表统计
-- 接口统计信息
+## 使用示例
 
-## 开发说明
+### 基本路由配置
 
-### 添加新的路由协议
+```bash
+# 添加静态路由
+curl -X POST http://localhost:8080/api/routes \
+  -H "Content-Type: application/json" \
+  -d '{"destination": "192.168.2.0/24", "gateway": "192.168.1.1", "interface": "eth0"}'
 
-1. 在 `internal/protocols/` 目录下创建新的协议文件
-2. 实现协议的启动、停止和更新逻辑
-3. 在路由器中注册新协议
+# 查看路由表
+curl http://localhost:8080/api/routes
+```
 
-### 扩展 CLI 命令
+### 防火墙规则
 
-1. 在 `internal/cli/cli.go` 中添加新的命令处理函数
-2. 更新命令解析逻辑
-3. 添加相应的帮助信息
+```bash
+# 添加防火墙规则
+curl -X POST http://localhost:8080/api/firewall \
+  -H "Content-Type: application/json" \
+  -d '{"action": "ACCEPT", "source": "192.168.1.0/24", "destination": "any", "port": 80}'
+```
 
-### 自定义数据包处理
+### 接口管理
 
-1. 修改 `internal/packet/processor.go` 中的处理逻辑
-2. 添加新的数据包类型支持
-3. 实现相应的转发规则
+```bash
+# 查看网络接口
+curl http://localhost:8080/api/interfaces
 
-## 注意事项
+# 配置接口IP
+curl -X POST http://localhost:8080/api/interfaces \
+  -H "Content-Type: application/json" \
+  -d '{"name": "eth0", "ip": "192.168.1.1", "mask": "255.255.255.0"}'
+```
 
-- 这是一个教学和演示用的简化路由器实现
-- 不建议在生产环境中使用
-- 某些功能可能需要管理员权限才能正常工作
-- 实际的网络数据包处理需要更复杂的实现
+## 部署
+
+### 系统服务
+
+```bash
+# 复制服务文件
+sudo cp deploy/router-os.service /etc/systemd/system/
+
+# 启用服务
+sudo systemctl enable router-os
+sudo systemctl start router-os
+
+# 查看状态
+sudo systemctl status router-os
+```
+
+### Docker部署
+
+```bash
+# 构建镜像
+docker build -t router-os .
+
+# 运行容器
+docker run -d --name router-os \
+  --privileged \
+  --network host \
+  -v /etc/router-os:/etc/router-os \
+  router-os
+```
+
+## 开发
+
+### 项目结构
+
+```
+router-os/
+├── cmd/router/          # 主程序入口
+├── internal/            # 内部模块
+│   ├── arp/            # ARP表管理
+│   ├── dhcp/           # DHCP服务器
+│   ├── firewall/       # 防火墙
+│   ├── forwarding/     # 数据包转发
+│   ├── interfaces/     # 接口管理
+│   ├── protocols/      # 路由协议
+│   ├── qos/           # QoS流量控制
+│   ├── routing/       # 路由表
+│   ├── vpn/           # VPN服务
+│   └── web/           # Web管理界面
+├── docs/              # 文档
+├── examples/          # 示例代码
+└── deploy/           # 部署脚本
+```
+
+### 测试
+
+```bash
+# 运行所有测试
+go test ./...
+
+# 运行特定模块测试
+go test ./internal/routing
+
+# 性能测试
+go test -bench=. ./internal/routing
+```
+
+## 文档
+
+- [架构文档](docs/ARCHITECTURE.md) - 系统架构和设计原理
+- [API参考](docs/API_REFERENCE.md) - REST API接口文档
+- [用户手册](docs/USER_MANUAL.md) - 详细使用说明
+- [学习指南](docs/LEARNING_GUIDE.md) - 路由器基础知识
+
+## 贡献
+
+欢迎提交Issue和Pull Request来改进项目。
 
 ## 许可证
 
 MIT License
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request 来改进这个项目。
