@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -115,17 +116,17 @@ func (cli *CLI) handlePacketSend(args []string) {
 		return
 	}
 
-	packet := processor.CreatePacket(packet.PacketTypeIPv4, srcIPAddr, dstIPAddr, []byte(data), "")
+	pkt := processor.CreatePacket(packet.PacketTypeIPv4, srcIPAddr, dstIPAddr, []byte(data), "")
 
 	fmt.Printf("创建数据包:\n")
-	fmt.Printf("  源IP: %s\n", packet.Source.String())
-	fmt.Printf("  目标IP: %s\n", packet.Destination.String())
-	fmt.Printf("  数据: %s\n", string(packet.Data))
-	fmt.Printf("  TTL: %d\n", packet.TTL)
+	fmt.Printf("  源IP: %s\n", pkt.Source.String())
+	fmt.Printf("  目标IP: %s\n", pkt.Destination.String())
+	fmt.Printf("  数据: %s\n", string(pkt.Data))
+	fmt.Printf("  TTL: %d\n", pkt.TTL)
 
 	// 处理数据包
 	fmt.Println("\n开始处理数据包...")
-	processor.ProcessPacket(packet)
+	_ = processor.ProcessPacket(pkt)
 
 	fmt.Println("数据包处理完成")
 }
@@ -233,7 +234,7 @@ func (cli *CLI) Start() {
 	completer := cli.createCompleter()
 
 	// 配置readline
-	config := &readline.Config{
+	cfg := &readline.Config{
 		Prompt:          "router-os> ",
 		HistoryFile:     cli.historyFile,
 		AutoComplete:    completer,
@@ -242,17 +243,19 @@ func (cli *CLI) Start() {
 	}
 
 	var err error
-	cli.rl, err = readline.NewEx(config)
+	cli.rl, err = readline.NewEx(cfg)
 	if err != nil {
 		fmt.Printf("初始化CLI失败: %v\n", err)
 		return
 	}
-	defer cli.rl.Close()
+	defer func() {
+		_ = cli.rl.Close()
+	}()
 
 	for cli.running {
 		line, err := cli.rl.Readline()
 		if err != nil {
-			if err == readline.ErrInterrupt {
+			if errors.Is(err, readline.ErrInterrupt) {
 				continue
 			} else if err == io.EOF {
 				break
@@ -447,12 +450,12 @@ func (cli *CLI) showInterfaces() {
 
 // showConfig 显示配置
 func (cli *CLI) showConfig() {
-	config := cli.configManager.GetConfig()
+	cfg := cli.configManager.GetConfig()
 
-	fmt.Printf("主机名: %s\n", config.Hostname)
-	fmt.Printf("日志级别: %s\n", config.LogLevel)
-	fmt.Printf("日志文件: %s\n", config.LogFile)
-	fmt.Printf("RIP协议: %v\n", config.RIP.Enabled)
+	fmt.Printf("主机名: %s\n", cfg.Hostname)
+	fmt.Printf("日志级别: %s\n", cfg.LogLevel)
+	fmt.Printf("日志文件: %s\n", cfg.LogFile)
+	fmt.Printf("RIP协议: %v\n", cfg.RIP.Enabled)
 }
 
 // showStats 显示统计信息
@@ -760,7 +763,7 @@ func (cli *CLI) handleISISCommand(args []string) {
 		}
 	case "stop":
 		if cli.isisManager != nil {
-			cli.isisManager.Stop()
+			_ = cli.isisManager.Stop()
 			fmt.Println("IS-IS已停止")
 		} else {
 			fmt.Println("IS-IS管理器未初始化")

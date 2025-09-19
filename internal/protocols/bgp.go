@@ -1,5 +1,42 @@
 // Package protocols 实现BGP（Border Gateway Protocol）协议
-// BGP是一种基于路径向量算法的外部网关协议（EGP）
+//
+// BGP协议详解：
+// BGP是一种基于路径向量算法的外部网关协议（EGP），主要用于自治系统（AS）之间的路由交换。
+// 它是互联网的核心路由协议，负责在不同的自治系统之间传播路由信息。
+//
+// 核心概念：
+// 1. 自治系统（AS）：由单一技术管理机构管理的一组路由器和网络的集合
+// 2. 路径向量算法：每个路由都包含完整的AS路径信息，用于防止路由环路
+// 3. BGP Speaker：运行BGP协议的路由器
+// 4. BGP邻居（Peer）：直接交换BGP信息的两个BGP Speaker
+//
+// BGP工作原理：
+// 1. 邻居建立：通过TCP连接建立BGP会话
+// 2. 路由交换：通过UPDATE消息交换路由信息
+// 3. 路由选择：基于多种属性选择最优路径
+// 4. 路由传播：将最优路由传播给其他邻居
+//
+// BGP消息类型：
+// 1. OPEN：建立BGP会话
+// 2. UPDATE：传播路由信息
+// 3. NOTIFICATION：错误通知
+// 4. KEEPALIVE：保持连接活跃
+//
+// BGP路径属性：
+// 1. ORIGIN：路由起源（IGP/EGP/Incomplete）
+// 2. AS_PATH：AS路径列表
+// 3. NEXT_HOP：下一跳地址
+// 4. MED：多出口判别符
+// 5. LOCAL_PREF：本地优先级
+// 6. COMMUNITY：团体属性
+//
+// 本实现特点：
+// - 遵循RFC 4271标准，支持BGP-4协议
+// - 实现完整的BGP状态机
+// - 支持多种路径属性
+// - 提供RIB（路由信息库）管理
+// - 支持路由选择和最优路径计算
+//
 // 本实现遵循RFC 4271标准，支持BGP-4协议的核心功能
 package protocols
 
@@ -15,66 +52,164 @@ import (
 )
 
 // BGP协议相关常量定义
+// 这些常量遵循RFC 4271标准，定义了BGP协议的基本参数
 const (
 	// BGPPort BGP协议使用的TCP端口号
+	// RFC 4271规定BGP使用TCP端口179进行通信
+	// BGP是基于TCP的可靠传输协议，确保消息的可靠传递
 	BGPPort = 179
 
 	// BGPVersion BGP协议版本号
+	// 当前实现支持BGP-4版本，这是目前广泛使用的版本
+	// BGP-4相比早期版本支持CIDR和更多路径属性
 	BGPVersion = 4
 
 	// BGPKeepaliveTime BGP Keepalive时间
+	// 用于保持BGP会话活跃的心跳间隔
+	// 通常设置为Hold Time的1/3，默认60秒
+	// 定期发送Keepalive消息防止会话超时
 	BGPKeepaliveTime = 60 * time.Second
 
 	// BGPHoldTime BGP Hold时间
+	// BGP会话的超时时间，如果在此时间内未收到消息则认为邻居失效
+	// RFC建议最小值为3秒，典型值为180秒
+	// 用于检测邻居故障和网络分割
 	BGPHoldTime = 180 * time.Second
 
 	// BGPConnectRetryTime BGP连接重试时间
+	// 当BGP连接失败时的重试间隔
+	// 避免频繁重连造成网络拥塞
+	// 典型值为120秒
 	BGPConnectRetryTime = 120 * time.Second
 
 	// BGPMaxMessageSize BGP最大消息大小
+	// BGP消息的最大长度限制，单位为字节
+	// RFC 4271规定最小值为19字节（仅包含头部）
+	// 最大值为4096字节，足以容纳大部分BGP消息
 	BGPMaxMessageSize = 4096
 )
 
 // BGPMessageType BGP消息类型
+// BGP协议定义了四种基本消息类型，用于不同的通信目的
 type BGPMessageType uint8
 
 const (
-	BGPOpen         BGPMessageType = 1
-	BGPUpdate       BGPMessageType = 2
+	// BGPOpen OPEN消息（类型1）
+	// 用于建立BGP会话，包含BGP版本、AS号、Hold Time等参数
+	// 这是BGP会话建立的第一步，双方交换基本配置信息
+	BGPOpen BGPMessageType = 1
+
+	// BGPUpdate UPDATE消息（类型2）
+	// 用于传播路由信息，包含路径属性和网络层可达性信息（NLRI）
+	// 这是BGP的核心消息，负责路由的通告和撤销
+	BGPUpdate BGPMessageType = 2
+
+	// BGPNotification NOTIFICATION消息（类型3）
+	// 用于报告错误并关闭BGP连接
+	// 包含错误代码和子代码，帮助诊断BGP会话问题
 	BGPNotification BGPMessageType = 3
-	BGPKeepalive    BGPMessageType = 4
+
+	// BGPKeepalive KEEPALIVE消息（类型4）
+	// 用于保持BGP会话活跃，防止Hold Timer超时
+	// 这是最简单的BGP消息，只包含BGP头部
+	BGPKeepalive BGPMessageType = 4
 )
 
 // BGPPeerState BGP邻居状态
+// BGP状态机定义了邻居关系的生命周期，从空闲到建立连接的完整过程
 type BGPPeerState uint8
 
 const (
-	BGPIdle        BGPPeerState = 0
-	BGPConnect     BGPPeerState = 1
-	BGPActive      BGPPeerState = 2
-	BGPOpenSent    BGPPeerState = 3
+	// BGPIdle 空闲状态（状态0）
+	// BGP的初始状态，拒绝所有传入的BGP连接
+	// 等待Start事件触发连接建立过程
+	BGPIdle BGPPeerState = 0
+
+	// BGPConnect 连接状态（状态1）
+	// 等待TCP连接建立完成
+	// 如果TCP连接成功，转入OpenSent状态
+	BGPConnect BGPPeerState = 1
+
+	// BGPActive 活跃状态（状态2）
+	// 尝试建立TCP连接
+	// 如果连接失败，可能回到Connect状态重试
+	BGPActive BGPPeerState = 2
+
+	// BGPOpenSent 已发送Open状态（状态3）
+	// TCP连接已建立，已发送OPEN消息
+	// 等待接收对方的OPEN消息
+	BGPOpenSent BGPPeerState = 3
+
+	// BGPOpenConfirm 确认Open状态（状态4）
+	// 已收到对方的OPEN消息并发送KEEPALIVE确认
+	// 等待接收对方的KEEPALIVE确认
 	BGPOpenConfirm BGPPeerState = 4
+
+	// BGPEstablished 已建立状态（状态5）
+	// BGP会话已完全建立，可以交换UPDATE消息
+	// 这是BGP的正常工作状态
 	BGPEstablished BGPPeerState = 5
 )
 
 // BGPOrigin BGP Origin属性
+// Origin属性指示路由信息的来源，影响路由选择的优先级
 type BGPOrigin uint8
 
 const (
-	OriginIGP        BGPOrigin = 0
-	OriginEGP        BGPOrigin = 1
+	// OriginIGP IGP起源（值0）
+	// 路由来自内部网关协议（如OSPF、RIP）
+	// 这是最优的起源类型，优先级最高
+	OriginIGP BGPOrigin = 0
+
+	// OriginEGP EGP起源（值1）
+	// 路由来自外部网关协议（历史遗留，现已废弃）
+	// 优先级中等，实际使用中很少见
+	OriginEGP BGPOrigin = 1
+
+	// OriginIncomplete 不完整起源（值2）
+	// 路由来源未知或通过重分发获得
+	// 优先级最低，通常用于静态路由重分发
 	OriginIncomplete BGPOrigin = 2
 )
 
 // BGPPathAttributeType BGP路径属性类型
+// 路径属性是BGP路由选择的核心，每种属性都有特定的用途和影响
 type BGPPathAttributeType uint8
 
 const (
-	BGPAttrOrigin    BGPPathAttributeType = 1
-	BGPAttrASPath    BGPPathAttributeType = 2
-	BGPAttrNextHop   BGPPathAttributeType = 3
-	BGPAttrMED       BGPPathAttributeType = 4
+	// BGPAttrOrigin ORIGIN属性（类型1）
+	// 必选传递属性，指示路由的起源
+	// 用于路由选择决策，IGP > EGP > Incomplete
+	BGPAttrOrigin BGPPathAttributeType = 1
+
+	// BGPAttrASPath AS_PATH属性（类型2）
+	// 必选传递属性，记录路由经过的AS序列
+	// 用于防止路由环路和路径选择
+	// AS_PATH越短，路由优先级越高
+	BGPAttrASPath BGPPathAttributeType = 2
+
+	// BGPAttrNextHop NEXT_HOP属性（类型3）
+	// 必选传递属性，指示到达目标网络的下一跳地址
+	// 对于EBGP，通常是邻居的IP地址
+	// 对于IBGP，可能需要递归查找
+	BGPAttrNextHop BGPPathAttributeType = 3
+
+	// BGPAttrMED MULTI_EXIT_DISC属性（类型4）
+	// 可选非传递属性，多出口判别符
+	// 用于影响从相邻AS进入本AS的流量路径选择
+	// MED值越小，路由优先级越高
+	BGPAttrMED BGPPathAttributeType = 4
+
+	// BGPAttrLocalPref LOCAL_PREF属性（类型5）
+	// 必选传递属性（仅在AS内部使用）
+	// 用于在AS内部选择出口路径
+	// LOCAL_PREF值越大，路由优先级越高
 	BGPAttrLocalPref BGPPathAttributeType = 5
+
+	// BGPAttrCommunity COMMUNITY属性（类型8）
+	// 可选传递属性，用于路由标记和策略控制
+	// 允许运营商对路由进行分组和策略应用
+	// 常用于流量工程和路由过滤
 	BGPAttrCommunity BGPPathAttributeType = 8
 )
 

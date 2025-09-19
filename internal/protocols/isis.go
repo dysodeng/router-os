@@ -1,5 +1,51 @@
 // Package protocols 实现IS-IS协议
-// IS-IS (Intermediate System to Intermediate System) 是一个链路状态路由协议
+//
+// IS-IS协议详解：
+// IS-IS (Intermediate System to Intermediate System) 是一个链路状态路由协议，
+// 最初为OSI协议栈设计，后来扩展支持IP协议。它是大型网络中广泛使用的IGP协议。
+//
+// 核心概念：
+// 1. 中间系统（IS）：路由器在OSI术语中的称呼
+// 2. 端系统（ES）：主机在OSI术语中的称呼
+// 3. 系统ID：6字节的唯一标识符，类似于MAC地址
+// 4. 区域（Area）：IS-IS网络的逻辑分组，用于层次化路由
+// 5. 级别（Level）：IS-IS支持两级层次结构
+//   - Level-1：区域内路由
+//   - Level-2：区域间路由
+//
+// IS-IS工作原理：
+// 1. 邻居发现：通过Hello PDU建立和维护邻居关系
+// 2. 链路状态传播：通过LSP（Link State PDU）传播拓扑信息
+// 3. 数据库同步：通过CSNP和PSNP确保LSP数据库一致性
+// 4. 路由计算：使用Dijkstra算法计算最短路径
+// 5. 路由安装：将计算结果安装到路由表
+//
+// PDU类型：
+// 1. Hello PDU：邻居发现和维护
+// 2. LSP（Link State PDU）：链路状态信息
+// 3. CSNP（Complete Sequence Number PDU）：完整序列号PDU
+// 4. PSNP（Partial Sequence Number PDU）：部分序列号PDU
+//
+// DIS选举：
+// 在广播网络中，IS-IS选举指定中间系统（DIS）来：
+// 1. 减少LSP泛洪开销
+// 2. 简化网络拓扑表示
+// 3. 提高网络收敛速度
+// DIS选举基于优先级和系统ID，优先级高者当选
+//
+// TLV结构：
+// IS-IS使用TLV（Type-Length-Value）格式携带各种信息：
+// - 区域地址、邻居信息、IP可达性等
+// - 支持协议扩展和新功能添加
+//
+// 本实现特点：
+// - 遵循ISO/IEC 10589标准
+// - 支持Level-1和Level-2路由
+// - 实现完整的邻居状态机
+// - 支持DIS选举机制
+// - 提供LSP数据库管理
+// - 集成Dijkstra最短路径算法
+//
 // 遵循 ISO/IEC 10589 标准
 package protocols
 
@@ -16,53 +62,172 @@ import (
 )
 
 // IS-IS协议常量
+// 这些常量遵循ISO/IEC 10589标准，定义了IS-IS协议的基本参数
 const (
-	// 协议标识符
+	// ISISProtocolID 协议标识符
+	// 0x83是IS-IS协议在OSI网络层的标准标识符
+	// 用于在数据链路层标识IS-IS协议数据单元
 	ISISProtocolID = 0x83
 
-	// PDU类型
-	ISISHelloPDUType = 15 // Hello PDU
-	ISISLSPType      = 18 // LSP PDU
-	ISISCSNPType     = 24 // Complete Sequence Number PDU
-	ISISPSNPType     = 26 // Partial Sequence Number PDU
+	// PDU类型定义
+	// IS-IS定义了四种基本PDU类型，用于不同的协议功能
 
-	// 级别
+	// ISISHelloPDUType Hello PDU类型（15）
+	// 用于邻居发现、邻居关系维护和DIS选举
+	// 定期发送以维持邻居关系的活跃状态
+	ISISHelloPDUType = 15
+
+	// ISISLSPType LSP PDU类型（18）
+	// 链路状态PDU，携带网络拓扑和可达性信息
+	// 这是IS-IS协议的核心，用于构建网络拓扑数据库
+	ISISLSPType = 18
+
+	// ISISCSNPType 完整序列号PDU类型（24）
+	// 用于LSP数据库同步，包含完整的LSP摘要信息
+	// 在点到点链路上用于数据库同步
+	ISISCSNPType = 24
+
+	// ISISPSNPType 部分序列号PDU类型（26）
+	// 用于请求特定的LSP或确认LSP接收
+	// 在数据库同步过程中使用
+	ISISPSNPType = 26
+
+	// 级别定义
+	// IS-IS支持两级层次化路由结构
+
+	// ISISLevel1 Level-1级别
+	// 区域内路由，只在单个区域内传播路由信息
+	// Level-1路由器只维护本区域的详细拓扑
 	ISISLevel1 = 1
+
+	// ISISLevel2 Level-2级别
+	// 区域间路由，在不同区域之间传播路由信息
+	// Level-2路由器维护区域间的拓扑信息
 	ISISLevel2 = 2
 
-	// 定时器 (秒)
-	ISISHelloInterval  = 10
-	ISISHoldTime       = 30
-	ISISLSPLifetime    = 1200
-	ISISLSPRefreshTime = 900
-	ISISCSNPInterval   = 10
+	// 定时器参数（单位：秒）
+	// 这些定时器控制IS-IS协议的各种周期性行为
 
-	// 度量值
-	ISISMaxMetric     = 63
+	// ISISHelloInterval Hello发送间隔
+	// 邻居Hello消息的发送频率，默认10秒
+	// 用于维持邻居关系和检测链路状态
+	ISISHelloInterval = 10
+
+	// ISISHoldTime 邻居保持时间
+	// 邻居失效的超时时间，通常是Hello间隔的3倍
+	// 如果在此时间内未收到Hello，则认为邻居失效
+	ISISHoldTime = 30
+
+	// ISISLSPLifetime LSP生存时间
+	// LSP在网络中的最大生存时间，默认1200秒（20分钟）
+	// 超过此时间的LSP将被删除
+	ISISLSPLifetime = 1200
+
+	// ISISLSPRefreshTime LSP刷新时间
+	// LSP的刷新间隔，默认900秒（15分钟）
+	// 在LSP过期前重新生成并传播
+	ISISLSPRefreshTime = 900
+
+	// ISISCSNPInterval CSNP发送间隔
+	// 完整序列号PDU的发送频率，默认10秒
+	// 用于定期同步LSP数据库
+	ISISCSNPInterval = 10
+
+	// 度量值定义
+	// IS-IS使用度量值来表示链路成本
+
+	// ISISMaxMetric 最大度量值
+	// IS-IS协议中链路的最大成本值，63表示链路不可达
+	// 用于标识故障链路或进行流量工程
+	ISISMaxMetric = 63
+
+	// ISISDefaultMetric 默认度量值
+	// 链路的默认成本值，用于正常的链路
+	// 可以根据链路带宽和延迟进行调整
 	ISISDefaultMetric = 10
 
-	// 系统ID长度
+	// 标识符长度定义
+	// IS-IS使用固定长度的标识符
+
+	// ISISSystemIDLen 系统ID长度
+	// 每个IS-IS节点的唯一标识符长度，固定为6字节
+	// 类似于MAC地址的概念，在整个IS-IS域内必须唯一
 	ISISSystemIDLen = 6
 
-	// 电路ID长度
+	// ISISCircuitIDLen 电路ID长度
+	// 用于标识多路访问网络中的伪节点，长度为1字节
+	// 在广播网络中由DIS分配
 	ISISCircuitIDLen = 1
 
-	// LSP ID长度
+	// ISISLSPIDLen LSP ID长度
+	// LSP标识符的总长度，包含系统ID和附加字段
+	// 用于唯一标识网络中的每个LSP
 	ISISLSPIDLen = ISISSystemIDLen + 2
 )
 
-// TLV类型
+// TLV类型定义
+// TLV（Type-Length-Value）是IS-IS协议中携带各种信息的标准格式
+// 每种TLV类型都有特定的用途和数据结构
 const (
-	TLVAreaAddresses      = 1   // 区域地址
-	TLVISNeighbors        = 2   // IS邻居
-	TLVESNeighbors        = 3   // ES邻居
-	TLVPartitionDIS       = 4   // 分区DIS
-	TLVPrefixNeighbors    = 5   // 前缀邻居
-	TLVISReachability     = 22  // IS可达性
-	TLVIPReachability     = 128 // IP可达性
-	TLVProtocolsSupported = 129 // 支持的协议
-	TLVIPInterfaceAddress = 132 // IP接口地址
-	TLVHostname           = 137 // 主机名
+	// TLVAreaAddresses 区域地址TLV（类型1）
+	// 携带IS-IS节点所属的区域地址信息
+	// 用于区域边界识别和路由决策
+	// 一个节点可以属于多个区域
+	TLVAreaAddresses = 1
+
+	// TLVISNeighbors IS邻居TLV（类型2）
+	// 在Hello PDU中携带已知的IS邻居信息
+	// 用于邻居关系建立和维护
+	// 包含邻居的系统ID和度量值
+	TLVISNeighbors = 2
+
+	// TLVESNeighbors ES邻居TLV（类型3）
+	// 携带端系统（主机）邻居信息
+	// 在现代IP网络中较少使用
+	// 主要用于OSI环境中的主机发现
+	TLVESNeighbors = 3
+
+	// TLVPartitionDIS 分区DIS TLV（类型4）
+	// 用于处理网络分区情况下的DIS信息
+	// 帮助修复网络分区问题
+	// 在网络拓扑变化时使用
+	TLVPartitionDIS = 4
+
+	// TLVPrefixNeighbors 前缀邻居TLV（类型5）
+	// 携带前缀级别的邻居信息
+	// 用于更精细的路由控制
+	// 支持基于前缀的路由策略
+	TLVPrefixNeighbors = 5
+
+	// TLVISReachability IS可达性TLV（类型22）
+	// 在LSP中携带IS-IS节点的可达性信息
+	// 描述到其他IS节点的连接和度量值
+	// 用于构建网络拓扑图
+	TLVISReachability = 22
+
+	// TLVIPReachability IP可达性TLV（类型128）
+	// 携带IP前缀的可达性信息
+	// 这是IS-IS支持IP路由的关键TLV
+	// 包含IP前缀、子网掩码和度量值
+	TLVIPReachability = 128
+
+	// TLVProtocolsSupported 支持的协议TLV（类型129）
+	// 声明节点支持的网络层协议
+	// 通常包含IP协议标识符
+	// 用于协议兼容性检查
+	TLVProtocolsSupported = 129
+
+	// TLVIPInterfaceAddress IP接口地址TLV（类型132）
+	// 携带节点接口的IP地址信息
+	// 用于下一跳解析和连通性检查
+	// 在LSP中通告接口地址
+	TLVIPInterfaceAddress = 132
+
+	// TLVHostname 主机名TLV（类型137）
+	// 携带IS-IS节点的可读主机名
+	// 用于网络管理和故障诊断
+	// 便于网络管理员识别节点
+	TLVHostname = 137
 )
 
 // IS-IS PDU头部

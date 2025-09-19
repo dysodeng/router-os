@@ -1,6 +1,40 @@
 // Package protocols 实现OSPF（Open Shortest Path First）协议
-// OSPF是一种基于链路状态算法的内部网关协议（IGP）
-// 本实现遵循RFC 2328标准，支持区域划分、SPF算法、LSA传播等核心功能
+//
+// OSPF协议详解：
+// OSPF是一种基于链路状态算法的内部网关协议（IGP），由IETF开发，遵循RFC 2328标准。
+// 它是目前企业网络中最广泛使用的路由协议之一。
+//
+// 核心特点：
+// 1. 链路状态算法：每个路由器维护整个网络拓扑的完整视图
+// 2. 快速收敛：网络变化时能够快速重新计算路由
+// 3. 支持VLSM：可变长子网掩码，提高IP地址利用率
+// 4. 层次化设计：通过区域划分减少路由开销
+// 5. 负载均衡：支持等价多路径（ECMP）
+//
+// 工作原理：
+// 1. 邻居发现：通过Hello包发现和维护邻居关系
+// 2. 数据库同步：邻居间交换链路状态数据库（LSDB）
+// 3. SPF计算：使用Dijkstra算法计算最短路径树
+// 4. 路由安装：将计算结果安装到路由表中
+//
+// 区域概念：
+// - 骨干区域（Area 0）：所有其他区域必须连接到骨干区域
+// - 普通区域：减少LSA泛洪范围，提高网络可扩展性
+// - 特殊区域：Stub、Totally Stub、NSSA等，进一步优化
+//
+// LSA类型：
+// - Type 1 (Router LSA)：描述路由器的链路信息
+// - Type 2 (Network LSA)：描述多路访问网络信息
+// - Type 3 (Summary LSA)：区域间路由摘要
+// - Type 4 (ASBR Summary)：ASBR路由器摘要
+// - Type 5 (External LSA)：外部路由信息
+//
+// 本实现支持的功能：
+// - 基本的邻居发现和维护
+// - LSA的生成、传播和老化
+// - SPF算法计算最短路径
+// - 多区域支持
+// - 接口类型检测和配置
 package protocols
 
 import (
@@ -16,54 +50,162 @@ import (
 )
 
 // OSPF协议相关常量定义
+// 这些常量定义了OSPF协议的核心参数，遵循RFC 2328标准
 const (
 	// OSPFAllSPFRouters OSPF所有SPF路由器组播地址
+	// 224.0.0.5 是IANA分配给OSPF的组播地址，用于：
+	// - Hello包的发送（在广播和点到多点网络中）
+	// - LSA的泛洪传播
+	// - 所有运行OSPF的路由器都会监听这个地址
 	OSPFAllSPFRouters = "224.0.0.5"
 
 	// OSPFAllDRRouters OSPF所有DR路由器组播地址
+	// 224.0.0.6 专门用于DR（指定路由器）和BDR（备份指定路由器）：
+	// - 只有DR和BDR监听这个地址
+	// - 用于减少广播网络中的LSA泛洪开销
+	// - 其他路由器只与DR/BDR交换LSA
 	OSPFAllDRRouters = "224.0.0.6"
 
 	// OSPFProtocolNumber OSPF协议号
+	// IP协议号89，标识IP数据包中承载的是OSPF协议
+	// OSPF直接运行在IP层之上，不使用TCP或UDP
 	OSPFProtocolNumber = 89
 
 	// OSPFVersion OSPF版本号
+	// 当前实现使用OSPFv2（适用于IPv4）
+	// OSPFv3用于IPv6，协议机制类似但数据包格式不同
 	OSPFVersion = 2
 
 	// OSPFHelloInterval Hello包发送间隔
+	// 默认10秒发送一次Hello包，用于：
+	// - 邻居发现和维护
+	// - 检测邻居是否仍然活跃
+	// - 在广播网络中进行DR/BDR选举
+	// 注意：所有路由器的Hello间隔必须一致才能建立邻接关系
 	OSPFHelloInterval = 10 * time.Second
 
 	// OSPFDeadInterval 邻居死亡间隔
+	// 默认40秒（通常是Hello间隔的4倍）
+	// 如果在此时间内没有收到邻居的Hello包，则认为邻居已死亡
+	// 这个参数影响网络收敛速度：
+	// - 值越小，故障检测越快，但可能误判
+	// - 值越大，故障检测越慢，但更稳定
 	OSPFDeadInterval = 40 * time.Second
 
 	// OSPFLSAMaxAge LSA最大生存时间
+	// LSA的最大生存时间为3600秒（1小时）
+	// 超过这个时间的LSA会被从LSDB中删除
+	// 这个机制确保过时的路由信息不会永久存在
 	OSPFLSAMaxAge = 3600 * time.Second
 
 	// OSPFLSRefreshTime LSA刷新时间
+	// LSA的刷新间隔为1800秒（30分钟）
+	// 路由器会定期重新生成自己的LSA以防止老化
+	// 这确保了网络拓扑信息的持续有效性
 	OSPFLSRefreshTime = 1800 * time.Second
 
 	// OSPFBackboneArea 骨干区域ID
+	// Area 0是OSPF的骨干区域，具有特殊意义：
+	// - 所有其他区域必须直接连接到骨干区域
+	// - 区域间的路由信息必须通过骨干区域传递
+	// - 这种层次化设计提高了网络的可扩展性
 	OSPFBackboneArea = 0
 )
 
 // OSPFPacketType OSPF数据包类型
+// OSPF协议定义了5种不同类型的数据包，每种都有特定的用途
 type OSPFPacketType uint8
 
 const (
-	OSPFHello     OSPFPacketType = 1
-	OSPFDBDesc    OSPFPacketType = 2
+	// OSPFHello Hello数据包（类型1）
+	// 用途：
+	// - 邻居发现：在网络中发现其他OSPF路由器
+	// - 邻居维护：定期发送以维持邻居关系
+	// - DR/BDR选举：在广播网络中选举指定路由器
+	// - 参数协商：确保邻居间的OSPF参数一致
+	// 发送频率：每10秒（可配置）
+	OSPFHello OSPFPacketType = 1
+
+	// OSPFDBDesc 数据库描述数据包（类型2）
+	// 用途：
+	// - 数据库同步的第一步
+	// - 交换各自LSDB的摘要信息
+	// - 确定哪些LSA需要请求
+	// - 建立主从关系（Master/Slave）
+	OSPFDBDesc OSPFPacketType = 2
+
+	// OSPFLSRequest 链路状态请求数据包（类型3）
+	// 用途：
+	// - 请求特定的LSA
+	// - 在数据库同步过程中使用
+	// - 包含所需LSA的标识信息
 	OSPFLSRequest OSPFPacketType = 3
-	OSPFLSUpdate  OSPFPacketType = 4
-	OSPFLSAck     OSPFPacketType = 5
+
+	// OSPFLSUpdate 链路状态更新数据包（类型4）
+	// 用途：
+	// - 传播LSA信息
+	// - 响应LSA请求
+	// - 泛洪新的或更新的LSA
+	// - 这是OSPF协议的核心，承载实际的拓扑信息
+	OSPFLSUpdate OSPFPacketType = 4
+
+	// OSPFLSAck 链路状态确认数据包（类型5）
+	// 用途：
+	// - 确认收到LSUpdate数据包
+	// - 确保LSA的可靠传输
+	// - 防止LSA的重复传输
+	OSPFLSAck OSPFPacketType = 5
 )
 
-// OSPFLSAType LSA类型
+// OSPFLSAType LSA（链路状态通告）类型
+// LSA是OSPF协议的核心数据结构，描述网络拓扑的不同方面
 type OSPFLSAType uint8
 
 const (
-	RouterLSA   OSPFLSAType = 1
-	NetworkLSA  OSPFLSAType = 2
-	SummaryLSA  OSPFLSAType = 3
+	// RouterLSA 路由器LSA（类型1）
+	// 描述：每个路由器生成，描述自己的链路信息
+	// 内容：
+	// - 路由器的所有链路（接口）
+	// - 每个链路的类型、度量值
+	// - 连接的网络或邻居信息
+	// 泛洪范围：仅在本区域内
+	RouterLSA OSPFLSAType = 1
+
+	// NetworkLSA 网络LSA（类型2）
+	// 描述：由DR生成，描述多路访问网络
+	// 内容：
+	// - 网络的子网掩码
+	// - 连接到该网络的所有路由器列表
+	// 用途：简化广播网络的拓扑表示
+	// 泛洪范围：仅在本区域内
+	NetworkLSA OSPFLSAType = 2
+
+	// SummaryLSA 汇总LSA（类型3）
+	// 描述：由ABR生成，描述区域间的网络路由
+	// 内容：
+	// - 目标网络的地址和掩码
+	// - 到达该网络的度量值
+	// 用途：在区域间传播路由信息，同时隐藏区域内的详细拓扑
+	// 泛洪范围：从一个区域传播到其他区域
+	SummaryLSA OSPFLSAType = 3
+
+	// ASBRSummary ASBR汇总LSA（类型4）
+	// 描述：由ABR生成，描述ASBR的位置
+	// 内容：
+	// - ASBR的路由器ID
+	// - 到达ASBR的度量值
+	// 用途：告诉其他区域如何到达ASBR，以便获取外部路由
+	// 泛洪范围：从ASBR所在区域传播到其他区域
 	ASBRSummary OSPFLSAType = 4
+
+	// ExternalLSA 外部LSA（类型5）
+	// 描述：由ASBR生成，描述外部路由（非OSPF路由）
+	// 内容：
+	// - 外部网络的地址和掩码
+	// - 外部路由的度量值和类型
+	// - 可选的转发地址
+	// 用途：将外部路由（如静态路由、其他协议路由）引入OSPF域
+	// 泛洪范围：整个OSPF域（除了Stub区域）
 	ExternalLSA OSPFLSAType = 5
 )
 
