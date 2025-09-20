@@ -66,7 +66,7 @@ type RouterInstance struct {
 	RoutingTable routing.RoutingTableInterface
 
 	// ARPTable ARP表
-	ARPTable *arp.ARPTable
+	ARPTable *arp.Table
 
 	// Forwarder 转发器
 	Forwarder *forwarding.Engine
@@ -81,7 +81,7 @@ type RouterInstance struct {
 	QoS *qos.QoSEngine
 
 	// DHCP DHCP服务器
-	DHCP *dhcp.DHCPServer
+	DHCP *dhcp.Server
 
 	// VPN VPN服务器
 	VPN *vpn.VPNServer
@@ -612,12 +612,29 @@ func (ws *WebServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 
                 if (configResponse && configResponse.ok) {
                     const config = await configResponse.json();
+                    
+                    // 安全地处理DNS服务器数组
+                    const dnsServers = Array.isArray(config.dns_servers) ? config.dns_servers : [];
+                    const dnsDisplay = dnsServers.length > 0 ? dnsServers.join(', ') : '未配置';
+                    
                     document.getElementById('dhcpConfig').innerHTML = 
-                        '<p><strong>地址池:</strong> ' + config.start_ip + ' - ' + config.end_ip + '</p>' +
-                        '<p><strong>子网掩码:</strong> ' + config.subnet_mask + '</p>' +
-                        '<p><strong>网关:</strong> ' + config.gateway + '</p>' +
-                        '<p><strong>DNS:</strong> ' + config.dns_servers.join(', ') + '</p>' +
-                        '<p><strong>租约时间:</strong> ' + config.lease_time + '秒</p>';
+                        '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">' +
+                            '<div>' +
+                                '<p><strong>服务状态:</strong> <span style="color: ' + (config.enabled ? '#27ae60' : '#e74c3c') + '">' + 
+                                (config.enabled ? '已启用' : '已禁用') + '</span></p>' +
+                                '<p><strong>地址池名称:</strong> ' + (config.pool_name || '默认池') + '</p>' +
+                                '<p><strong>网络:</strong> ' + (config.network || '-') + '</p>' +
+                            '</div>' +
+                            '<div>' +
+                                '<p><strong>IP地址范围:</strong> ' + (config.start_ip || '-') + ' - ' + (config.end_ip || '-') + '</p>' +
+                                '<p><strong>子网掩码:</strong> ' + (config.subnet_mask || '-') + '</p>' +
+                                '<p><strong>网关:</strong> ' + (config.gateway || '-') + '</p>' +
+                            '</div>' +
+                            '<div>' +
+                                '<p><strong>DNS服务器:</strong> ' + dnsDisplay + '</p>' +
+                                '<p><strong>租约时间:</strong> ' + (config.lease_time ? config.lease_time + '秒' : '-') + '</p>' +
+                            '</div>' +
+                        '</div>';
                 }
 
                 if (leasesResponse && leasesResponse.ok) {
@@ -625,16 +642,18 @@ func (ws *WebServer) handleIndex(w http.ResponseWriter, r *http.Request) {
                     const tbody = document.getElementById('dhcpLeasesList');
                     tbody.innerHTML = '';
 
-                    leases.forEach(lease => {
-                        const row = tbody.insertRow();
-                        const remainingTime = Math.max(0, lease.expires - Date.now() / 1000);
-                        row.innerHTML = 
-                            '<td>' + lease.ip + '</td>' +
-                            '<td>' + lease.mac + '</td>' +
-                            '<td>' + (lease.hostname || '-') + '</td>' +
-                            '<td>' + new Date(lease.start * 1000).toLocaleString() + '</td>' +
-                            '<td>' + Math.floor(remainingTime / 60) + '分钟</td>';
-                    });
+                    if (Array.isArray(leases)) {
+                        leases.forEach(lease => {
+                            const row = tbody.insertRow();
+                            const remainingTime = Math.max(0, lease.expires - Date.now() / 1000);
+                            row.innerHTML = 
+                                '<td>' + (lease.ip || '-') + '</td>' +
+                                '<td>' + (lease.mac || '-') + '</td>' +
+                                '<td>' + (lease.hostname || '-') + '</td>' +
+                                '<td>' + (lease.start ? new Date(lease.start * 1000).toLocaleString() : '-') + '</td>' +
+                                '<td>' + Math.floor(remainingTime / 60) + '分钟</td>';
+                        });
+                    }
                 }
             } catch (error) {
                 console.error('加载DHCP信息失败:', error);
@@ -1047,9 +1066,50 @@ func (ws *WebServer) handleDHCPConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	config := ws.router.DHCP.GetConfig()
+	// 获取DHCP地址池配置
+	pools := ws.router.DHCP.GetPools()
+
+	// 创建前端期望的配置格式
+	var dhcpConfig map[string]interface{}
+
+	if len(pools) > 0 {
+		// 使用第一个地址池的配置
+		pool := pools[0]
+
+		// 格式化DNS服务器列表
+		var dnsServers []string
+		for _, dns := range pool.DNSServers {
+			dnsServers = append(dnsServers, dns.String())
+		}
+
+		dhcpConfig = map[string]interface{}{
+			"enabled":     ws.router.DHCP.GetConfig().Enabled,
+			"start_ip":    pool.StartIP.String(),
+			"end_ip":      pool.EndIP.String(),
+			"subnet_mask": pool.Network.Mask.String(),
+			"gateway":     pool.Gateway.String(),
+			"dns_servers": dnsServers,
+			"lease_time":  int(pool.LeaseTime.Seconds()),
+			"pool_name":   pool.Name,
+			"network":     pool.Network.String(),
+		}
+	} else {
+		// 如果没有地址池，返回默认配置
+		dhcpConfig = map[string]interface{}{
+			"enabled":     ws.router.DHCP.GetConfig().Enabled,
+			"start_ip":    "",
+			"end_ip":      "",
+			"subnet_mask": "",
+			"gateway":     "",
+			"dns_servers": []string{},
+			"lease_time":  0,
+			"pool_name":   "",
+			"network":     "",
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(dhcpConfig)
 }
 
 // handleDHCPLeases 处理DHCP租约

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -225,7 +226,7 @@ func (cli *CLI) Start() {
 	completer := cli.createCompleter()
 
 	// 配置readline
-	config := &readline.Config{
+	cfg := &readline.Config{
 		Prompt:          "router-os> ",
 		HistoryFile:     cli.historyFile,
 		AutoComplete:    completer,
@@ -234,7 +235,7 @@ func (cli *CLI) Start() {
 	}
 
 	var err error
-	cli.rl, err = readline.NewEx(config)
+	cli.rl, err = readline.NewEx(cfg)
 	if err != nil {
 		fmt.Printf("初始化CLI失败: %v\n", err)
 		return
@@ -246,7 +247,7 @@ func (cli *CLI) Start() {
 	for cli.running {
 		line, err := cli.rl.Readline()
 		if err != nil {
-			if err == readline.ErrInterrupt {
+			if errors.Is(err, readline.ErrInterrupt) {
 				continue
 			} else if err == io.EOF {
 				break

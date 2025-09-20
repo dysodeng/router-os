@@ -52,7 +52,7 @@ func main() {
 	// 初始化各个模块
 	log.Println("初始化网络接口管理器...")
 	interfaceManager := interfaces.NewManager()
-	if err := interfaceManager.Start(); err != nil {
+	if err = interfaceManager.Start(); err != nil {
 		log.Fatalf("启动接口管理器失败: %v", err)
 	}
 
@@ -61,28 +61,87 @@ func main() {
 
 	log.Println("初始化ARP表...")
 	arpTable := arp.NewARPTable(1000, 300, 60*time.Second)
-	if err := arpTable.Start(); err != nil {
+	if err = arpTable.Start(); err != nil {
 		log.Fatalf("启动ARP表失败: %v", err)
 	}
 
 	log.Println("初始化数据包转发引擎...")
 	forwardingEngine := forwarding.NewForwardingEngine(routingTable, interfaceManager, arpTable)
-	if err := forwardingEngine.Start(); err != nil {
+	if err = forwardingEngine.Start(); err != nil {
 		log.Fatalf("启动转发引擎失败: %v", err)
 	}
 
 	log.Println("初始化网络配置器...")
 	netConfig := netconfig.NewNetworkConfigurator()
 
+	// 获取系统路由表并同步到路由表中
+	log.Println("获取系统路由表...")
+	systemRoutes, err := netConfig.GetRouteTable()
+	if err != nil {
+		log.Printf("获取系统路由表失败: %v", err)
+	} else {
+		log.Printf("成功获取到 %d 条系统路由", len(systemRoutes))
+
+		// 将系统路由添加到路由表中
+		for _, routeEntry := range systemRoutes {
+			// 目标网络已经是*net.IPNet类型，直接使用
+			destNet := routeEntry.Destination
+			if destNet == nil {
+				log.Printf("跳过无效的路由条目：目标网络为空")
+				continue
+			}
+
+			// 网关IP已经是net.IP类型，直接使用
+			gateway := routeEntry.Gateway
+
+			// 根据路由类型字符串确定路由类型
+			var routeType routing.RouteType
+			switch routeEntry.Type {
+			case "static":
+				routeType = routing.RouteTypeStatic
+			case "dynamic":
+				routeType = routing.RouteTypeDynamic
+			case "connected":
+				routeType = routing.RouteTypeConnected
+			case "default":
+				routeType = routing.RouteTypeDefault
+			default:
+				routeType = routing.RouteTypeStatic // 默认为静态路由
+			}
+
+			// 创建路由条目
+			route := routing.Route{
+				Destination: destNet,
+				Gateway:     gateway,
+				Interface:   routeEntry.Interface,
+				Metric:      routeEntry.Metric,
+				Type:        routeType,
+				Age:         time.Now(),
+			}
+
+			// 添加到路由表
+			if err = routingTable.AddRoute(route); err != nil {
+				log.Printf("添加系统路由失败 %s: %v", destNet.String(), err)
+			} else {
+				gatewayStr := "直连"
+				if gateway != nil {
+					gatewayStr = gateway.String()
+				}
+				log.Printf("成功添加系统路由: %s via %s dev %s",
+					destNet.String(), gatewayStr, routeEntry.Interface)
+			}
+		}
+	}
+
 	log.Println("初始化防火墙...")
 	firewallEngine := firewall.NewFirewall()
-	if err := firewallEngine.Start(); err != nil {
+	if err = firewallEngine.Start(); err != nil {
 		log.Fatalf("启动防火墙失败: %v", err)
 	}
 
 	log.Println("初始化QoS引擎...")
 	qosEngine := qos.NewQoSEngine()
-	if err := qosEngine.Start(); err != nil {
+	if err = qosEngine.Start(); err != nil {
 		log.Fatalf("启动QoS引擎失败: %v", err)
 	}
 
@@ -102,10 +161,46 @@ func main() {
 		dhcpServer.SetConfig(dhcpConfig)
 
 		// 添加地址池
-		_, network, err := net.ParseCIDR(fmt.Sprintf("%s/%s", appConfig.DHCP.StartIP[:len(appConfig.DHCP.StartIP)-3], "24"))
-		if err != nil {
-			// 如果解析失败，使用默认网络
-			_, network, _ = net.ParseCIDR("192.168.1.0/24")
+		// 正确解析子网掩码和网络地址
+		var network *net.IPNet
+		var mask net.IPMask
+
+		// 解析子网掩码
+		maskIP := net.ParseIP(appConfig.DHCP.SubnetMask)
+		if maskIP != nil && maskIP.To4() != nil {
+			// 将IP地址格式的子网掩码转换为IPMask
+			mask = net.IPv4Mask(maskIP[12], maskIP[13], maskIP[14], maskIP[15])
+		} else {
+			// 如果解析失败，使用默认的/24掩码
+			mask = net.CIDRMask(24, 32)
+			log.Printf("警告: 子网掩码解析失败，使用默认/24掩码")
+		}
+
+		// 使用网关IP计算网络地址
+		gatewayIP := net.ParseIP(appConfig.DHCP.Gateway)
+		if gatewayIP != nil {
+			// 计算网络地址：网关IP与掩码进行AND操作
+			networkIP := gatewayIP.Mask(mask)
+			network = &net.IPNet{
+				IP:   networkIP,
+				Mask: mask,
+			}
+			log.Printf("DHCP网络配置: %s/%d, 网关: %s", network.IP.String(), maskBits(mask), gatewayIP.String())
+		} else {
+			// 备用方案：使用起始IP计算网络地址
+			startIP := net.ParseIP(appConfig.DHCP.StartIP)
+			if startIP != nil {
+				networkIP := startIP.Mask(mask)
+				network = &net.IPNet{
+					IP:   networkIP,
+					Mask: mask,
+				}
+				log.Printf("DHCP网络配置(备用): %s/%d", network.IP.String(), maskBits(mask))
+			} else {
+				// 最后的备用方案
+				_, network, _ = net.ParseCIDR("192.168.2.0/24")
+				log.Printf("DHCP网络配置(默认): %s", network.String())
+			}
 		}
 
 		pool := &dhcp.AddressPool{
@@ -129,11 +224,11 @@ func main() {
 			pool.DNSServers[i] = net.ParseIP(dns)
 		}
 
-		if err := dhcpServer.AddPool(pool); err != nil {
+		if err = dhcpServer.AddPool(pool); err != nil {
 			log.Printf("添加DHCP地址池失败: %v", err)
 		}
 
-		if err := dhcpServer.Start(); err != nil {
+		if err = dhcpServer.Start("0.0.0.0:67"); err != nil {
 			log.Fatalf("启动DHCP服务器失败: %v", err)
 		}
 		log.Println("DHCP服务器启动成功")
@@ -147,7 +242,7 @@ func main() {
 	// 根据配置决定是否启动VPN服务器
 	if appConfig.VPN.Enabled {
 		log.Println("VPN服务已启用，正在启动...")
-		if err := vpnServer.Start(); err != nil {
+		if err = vpnServer.Start(); err != nil {
 			log.Fatalf("启动VPN服务器失败: %v", err)
 		}
 		log.Println("VPN服务器启动成功")
@@ -213,4 +308,10 @@ func main() {
 	interfaceManager.Stop()
 
 	log.Println("Router OS 已关闭")
+}
+
+// maskBits 计算子网掩码的位数
+func maskBits(mask net.IPMask) int {
+	ones, _ := mask.Size()
+	return ones
 }

@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-// ARPEntry ARP表条目
+// Entry ARP表条目
 // 存储IP地址到MAC地址的映射关系
 // 这是二层转发的基础，路由器需要知道下一跳的MAC地址才能构造以太网帧
-type ARPEntry struct {
+type Entry struct {
 	// IPAddress IP地址
 	IPAddress net.IP
 
@@ -31,7 +31,7 @@ type ARPEntry struct {
 	TTL time.Duration
 
 	// State 条目状态
-	State ARPState
+	State State
 
 	// RetryCount 重试次数（用于未完成的ARP请求）
 	RetryCount int
@@ -46,46 +46,46 @@ type ARPEntry struct {
 	UpdatedAt time.Time
 }
 
-// ARPState ARP条目状态
-type ARPState int
+// State ARP条目状态
+type State int
 
 const (
-	// ARPStateIncomplete ARP解析进行中
-	ARPStateIncomplete ARPState = iota
+	// StateIncomplete ARP解析进行中
+	StateIncomplete State = iota
 
-	// ARPStateReachable ARP条目有效且可达
-	ARPStateReachable
+	// StateReachable ARP条目有效且可达
+	StateReachable
 
-	// ARPStateStale ARP条目过期但仍可用
-	ARPStateStale
+	// StateStale ARP条目过期但仍可用
+	StateStale
 
-	// ARPStateFailed ARP解析失败
-	ARPStateFailed
+	// StateFailed ARP解析失败
+	StateFailed
 
-	// ARPStatePending ARP请求等待中
-	ARPStatePending
+	// StatePending ARP请求等待中
+	StatePending
 )
 
 // String 返回ARP状态的字符串表示
-func (s ARPState) String() string {
+func (s State) String() string {
 	switch s {
-	case ARPStateIncomplete:
+	case StateIncomplete:
 		return "INCOMPLETE"
-	case ARPStateReachable:
+	case StateReachable:
 		return "REACHABLE"
-	case ARPStateStale:
+	case StateStale:
 		return "STALE"
-	case ARPStateFailed:
+	case StateFailed:
 		return "FAILED"
-	case ARPStatePending:
+	case StatePending:
 		return "PENDING"
 	default:
 		return "UNKNOWN"
 	}
 }
 
-// ARPStats ARP统计信息
-type ARPStats struct {
+// Stats ARP统计信息
+type Stats struct {
 	TotalEntries      uint64
 	EntriesAdded      uint64
 	EntriesRemoved    uint64
@@ -100,8 +100,8 @@ type ARPStats struct {
 	GratuitousARPSent uint64
 }
 
-// ARPConflict IP冲突记录
-type ARPConflict struct {
+// Conflict IP冲突记录
+type Conflict struct {
 	IP        net.IP
 	OldMAC    net.HardwareAddr
 	NewMAC    net.HardwareAddr
@@ -118,8 +118,8 @@ type MACChange struct {
 	Timestamp time.Time
 }
 
-// ARPPacket ARP数据包结构
-type ARPPacket struct {
+// Packet ARP数据包结构
+type Packet struct {
 	HardwareType       uint16  // 硬件类型 (1 = Ethernet)
 	ProtocolType       uint16  // 协议类型 (0x0800 = IPv4)
 	HardwareAddrLength uint8   // 硬件地址长度 (6 for MAC)
@@ -133,16 +133,16 @@ type ARPPacket struct {
 
 // ARPConstants ARP协议常量
 const (
-	ARPHardwareTypeEthernet = 1
-	ARPProtocolTypeIPv4     = 0x0800
-	ARPOperationRequest     = 1
-	ARPOperationReply       = 2
-	ARPHardwareAddrLen      = 6
-	ARPProtocolAddrLen      = 4
-	ARPPacketSize           = 28
+	HardwareTypeEthernet = 1
+	ProtocolTypeIPv4     = 0x0800
+	OperationRequest     = 1
+	OperationReply       = 2
+	HardwareAddrLen      = 6
+	ProtocolAddrLen      = 4
+	PacketSize           = 28
 )
 
-// ARPTable ARP表管理器
+// Table ARP表管理器
 // 负责维护IP到MAC地址的映射表，这是路由器二层转发的核心组件
 //
 // 主要功能：
@@ -162,9 +162,9 @@ const (
 // - ARP表有大小限制，防止内存耗尽
 // - 条目有生存时间，定期清理过期条目
 // - 支持静态ARP条目，用于安全或特殊需求
-type ARPTable struct {
+type Table struct {
 	// entries ARP条目映射表
-	entries map[string]*ARPEntry
+	entries map[string]*Entry
 
 	// mu 读写锁，保护并发访问
 	mu sync.RWMutex
@@ -182,10 +182,10 @@ type ARPTable struct {
 	running bool
 
 	// stats 统计信息
-	stats ARPStats
+	stats Stats
 
 	// conflicts IP冲突记录
-	conflicts []ARPConflict
+	conflicts []Conflict
 
 	// macChanges MAC变化记录
 	macChanges []MACChange
@@ -224,15 +224,15 @@ type PendingRequest struct {
 }
 
 // NewARPTable 创建新的ARP表
-func NewARPTable(maxEntries int, defaultTTL time.Duration, cleanupInterval time.Duration) *ARPTable {
-	return &ARPTable{
-		entries:         make(map[string]*ARPEntry),
+func NewARPTable(maxEntries int, defaultTTL time.Duration, cleanupInterval time.Duration) *Table {
+	return &Table{
+		entries:         make(map[string]*Entry),
 		maxEntries:      maxEntries,
 		defaultTTL:      defaultTTL,
 		cleanupInterval: cleanupInterval,
 		running:         false,
-		stats:           ARPStats{},
-		conflicts:       make([]ARPConflict, 0),
+		stats:           Stats{},
+		conflicts:       make([]Conflict, 0),
 		macChanges:      make([]MACChange, 0),
 		rawSocket:       -1,
 		interfaces:      make(map[string]*InterfaceInfo),
@@ -241,7 +241,7 @@ func NewARPTable(maxEntries int, defaultTTL time.Duration, cleanupInterval time.
 }
 
 // Start 启动ARP表的后台清理任务和ARP监听器
-func (at *ARPTable) Start() error {
+func (at *Table) Start() error {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -262,7 +262,7 @@ func (at *ARPTable) Start() error {
 }
 
 // Stop 停止ARP表管理器
-func (at *ARPTable) Stop() {
+func (at *Table) Stop() {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -277,7 +277,7 @@ func (at *ARPTable) Stop() {
 }
 
 // AddEntry 添加ARP条目
-func (at *ARPTable) AddEntry(ip net.IP, mac net.HardwareAddr, iface string) error {
+func (at *Table) AddEntry(ip net.IP, mac net.HardwareAddr, iface string) error {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -296,11 +296,11 @@ func (at *ARPTable) AddEntry(ip net.IP, mac net.HardwareAddr, iface string) erro
 	}
 
 	// 创建或更新条目
-	entry := &ARPEntry{
+	entry := &Entry{
 		IPAddress:    ip,
 		MACAddress:   mac,
 		Interface:    iface,
-		State:        ARPStateReachable,
+		State:        StateReachable,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		LastAccessed: time.Now(),
@@ -317,7 +317,7 @@ func (at *ARPTable) AddEntry(ip net.IP, mac net.HardwareAddr, iface string) erro
 }
 
 // LookupEntry 查找ARP条目
-func (at *ARPTable) LookupEntry(ip net.IP) (*ARPEntry, bool) {
+func (at *Table) LookupEntry(ip net.IP) (*Entry, bool) {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
 
@@ -335,7 +335,7 @@ func (at *ARPTable) LookupEntry(ip net.IP) (*ARPEntry, bool) {
 	// 检查条目是否过期
 	if time.Since(entry.UpdatedAt) > entry.TTL {
 		// 条目过期，标记为stale状态
-		entry.State = ARPStateStale
+		entry.State = StateStale
 		at.stats.ExpiredEntries++
 	}
 
@@ -346,7 +346,7 @@ func (at *ARPTable) LookupEntry(ip net.IP) (*ARPEntry, bool) {
 }
 
 // DeleteEntry 删除ARP条目
-func (at *ARPTable) DeleteEntry(ip net.IP) bool {
+func (at *Table) DeleteEntry(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
@@ -366,11 +366,11 @@ func (at *ARPTable) DeleteEntry(ip net.IP) bool {
 }
 
 // GetAllEntries 获取所有ARP条目
-func (at *ARPTable) GetAllEntries() []*ARPEntry {
+func (at *Table) GetAllEntries() []*Entry {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
 
-	entries := make([]*ARPEntry, 0, len(at.entries))
+	entries := make([]*Entry, 0, len(at.entries))
 	for _, entry := range at.entries {
 		// 创建条目副本
 		entryCopy := *entry
@@ -381,7 +381,7 @@ func (at *ARPTable) GetAllEntries() []*ARPEntry {
 }
 
 // GetStats 获取ARP表统计信息
-func (at *ARPTable) GetStats() ARPStats {
+func (at *Table) GetStats() Stats {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
 
@@ -389,7 +389,7 @@ func (at *ARPTable) GetStats() ARPStats {
 }
 
 // cleanupLoop 清理循环
-func (at *ARPTable) cleanupLoop() {
+func (at *Table) cleanupLoop() {
 	ticker := time.NewTicker(at.cleanupInterval)
 	defer ticker.Stop()
 
@@ -404,7 +404,7 @@ func (at *ARPTable) cleanupLoop() {
 }
 
 // cleanupExpiredEntries 清理过期条目
-func (at *ARPTable) cleanupExpiredEntries() {
+func (at *Table) cleanupExpiredEntries() {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -421,13 +421,13 @@ func (at *ARPTable) cleanupExpiredEntries() {
 			}
 
 			// 否则标记为stale状态
-			if entry.State == ARPStateReachable {
-				entry.State = ARPStateStale
+			if entry.State == StateReachable {
+				entry.State = StateStale
 			}
 		}
 
 		// 清理长时间处于pending状态的条目
-		if entry.State == ARPStatePending && now.Sub(entry.CreatedAt) > time.Minute {
+		if entry.State == StatePending && now.Sub(entry.CreatedAt) > time.Minute {
 			expiredIPs = append(expiredIPs, ipStr)
 		}
 	}
@@ -442,14 +442,14 @@ func (at *ARPTable) cleanupExpiredEntries() {
 }
 
 // Resolve 解析IP地址到MAC地址
-func (at *ARPTable) Resolve(ip net.IP, iface string, timeout time.Duration) (net.HardwareAddr, error) {
+func (at *Table) Resolve(ip net.IP, iface string, timeout time.Duration) (net.HardwareAddr, error) {
 	if ip == nil {
 		return nil, fmt.Errorf("IP地址不能为空")
 	}
 
 	// 第一步：查询ARP缓存
 	entry, found := at.LookupEntry(ip)
-	if found && entry.State == ARPStateReachable {
+	if found && entry.State == StateReachable {
 		// 缓存命中且条目有效，直接返回
 		return entry.MACAddress, nil
 	}
@@ -459,7 +459,7 @@ func (at *ARPTable) Resolve(ip net.IP, iface string, timeout time.Duration) (net
 }
 
 // sendARPRequest 发送真实的ARP请求
-func (at *ARPTable) sendARPRequest(ip net.IP, iface string, timeout time.Duration) (net.HardwareAddr, error) {
+func (at *Table) sendARPRequest(ip net.IP, iface string, timeout time.Duration) (net.HardwareAddr, error) {
 	if ip == nil {
 		return nil, fmt.Errorf("目标IP地址不能为空")
 	}
@@ -478,7 +478,7 @@ func (at *ARPTable) sendARPRequest(ip net.IP, iface string, timeout time.Duratio
 }
 
 // querySystemARP 查询系统ARP表
-func (at *ARPTable) querySystemARP(ip net.IP) (net.HardwareAddr, error) {
+func (at *Table) querySystemARP(ip net.IP) (net.HardwareAddr, error) {
 	// 使用arp命令查询系统ARP表
 	cmd := exec.Command("arp", "-n", ip.String())
 	output, err := cmd.Output()
@@ -508,7 +508,7 @@ func (at *ARPTable) querySystemARP(ip net.IP) (net.HardwareAddr, error) {
 }
 
 // sendARPPacket 发送ARP数据包
-func (at *ARPTable) sendARPPacket(ip net.IP, iface string, timeout time.Duration) (net.HardwareAddr, error) {
+func (at *Table) sendARPPacket(ip net.IP, iface string, timeout time.Duration) (net.HardwareAddr, error) {
 	// 获取接口信息
 	ifaceInfo, err := at.getInterfaceInfo(iface)
 	if err != nil {
@@ -532,7 +532,7 @@ func (at *ARPTable) sendARPPacket(ip net.IP, iface string, timeout time.Duration
 }
 
 // getInterfaceInfo 获取网络接口信息
-func (at *ARPTable) getInterfaceInfo(ifaceName string) (*InterfaceInfo, error) {
+func (at *Table) getInterfaceInfo(ifaceName string) (*InterfaceInfo, error) {
 	at.mu.RLock()
 	if info, exists := at.interfaces[ifaceName]; exists {
 		at.mu.RUnlock()
@@ -587,13 +587,13 @@ func (at *ARPTable) getInterfaceInfo(ifaceName string) (*InterfaceInfo, error) {
 }
 
 // createARPRequest 创建ARP请求包
-func (at *ARPTable) createARPRequest(targetIP net.IP, ifaceInfo *InterfaceInfo) (*ARPPacket, error) {
-	packet := &ARPPacket{
-		HardwareType:       ARPHardwareTypeEthernet,
-		ProtocolType:       ARPProtocolTypeIPv4,
-		HardwareAddrLength: ARPHardwareAddrLen,
-		ProtocolAddrLength: ARPProtocolAddrLen,
-		Operation:          ARPOperationRequest,
+func (at *Table) createARPRequest(targetIP net.IP, ifaceInfo *InterfaceInfo) (*Packet, error) {
+	packet := &Packet{
+		HardwareType:       HardwareTypeEthernet,
+		ProtocolType:       ProtocolTypeIPv4,
+		HardwareAddrLength: HardwareAddrLen,
+		ProtocolAddrLength: ProtocolAddrLen,
+		Operation:          OperationRequest,
 	}
 
 	// 设置发送方地址
@@ -608,7 +608,7 @@ func (at *ARPTable) createARPRequest(targetIP net.IP, ifaceInfo *InterfaceInfo) 
 }
 
 // sendRawARPPacket 发送原始ARP数据包
-func (at *ARPTable) sendRawARPPacket(packet *ARPPacket, ifaceInfo *InterfaceInfo) error {
+func (at *Table) sendRawARPPacket(packet *Packet, ifaceInfo *InterfaceInfo) error {
 	// 在实际实现中，这里需要使用原始套接字发送ARP包
 	// 由于需要root权限和复杂的套接字操作，这里使用系统命令作为替代
 
@@ -626,7 +626,7 @@ func (at *ARPTable) sendRawARPPacket(packet *ARPPacket, ifaceInfo *InterfaceInfo
 }
 
 // waitForARPReply 等待ARP响应
-func (at *ARPTable) waitForARPReply(targetIP net.IP, timeout time.Duration) (net.HardwareAddr, error) {
+func (at *Table) waitForARPReply(targetIP net.IP, timeout time.Duration) (net.HardwareAddr, error) {
 	// 等待一段时间后再次查询系统ARP表
 	time.Sleep(100 * time.Millisecond)
 
@@ -642,7 +642,7 @@ func (at *ARPTable) waitForARPReply(targetIP net.IP, timeout time.Duration) (net
 }
 
 // SendARPRequest 发送ARP请求
-func (at *ARPTable) SendARPRequest(targetIP net.IP, iface string) error {
+func (at *Table) SendARPRequest(targetIP net.IP, iface string) error {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -652,10 +652,10 @@ func (at *ARPTable) SendARPRequest(targetIP net.IP, iface string) error {
 
 	// 创建pending条目
 	ipStr := targetIP.String()
-	entry := &ARPEntry{
+	entry := &Entry{
 		IPAddress:    targetIP,
 		Interface:    iface,
-		State:        ARPStatePending,
+		State:        StatePending,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		LastAccessed: time.Now(),
@@ -672,7 +672,7 @@ func (at *ARPTable) SendARPRequest(targetIP net.IP, iface string) error {
 }
 
 // sendARPRequestAsync 异步发送真实的ARP请求
-func (at *ARPTable) sendARPRequestAsync(targetIP net.IP, iface string) {
+func (at *Table) sendARPRequestAsync(targetIP net.IP, iface string) {
 	go func() {
 		// 设置默认超时时间
 		timeout := 3 * time.Second
@@ -691,7 +691,7 @@ func (at *ARPTable) sendARPRequestAsync(targetIP net.IP, iface string) {
 }
 
 // addPendingRequest 添加待处理的ARP请求
-func (at *ARPTable) addPendingRequest(targetIP net.IP, iface string, timeout time.Duration, callback func(net.HardwareAddr, error)) {
+func (at *Table) addPendingRequest(targetIP net.IP, iface string, timeout time.Duration, callback func(net.HardwareAddr, error)) {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -713,7 +713,7 @@ func (at *ARPTable) addPendingRequest(targetIP net.IP, iface string, timeout tim
 }
 
 // handlePendingRequest 处理待处理的ARP请求
-func (at *ARPTable) handlePendingRequest(key string, request *PendingRequest) {
+func (at *Table) handlePendingRequest(key string, request *PendingRequest) {
 	for request.RetryCount < request.MaxRetries {
 		// 等待重试间隔
 		time.Sleep(time.Second * time.Duration(request.RetryCount+1))
@@ -751,9 +751,9 @@ func (at *ARPTable) handlePendingRequest(key string, request *PendingRequest) {
 }
 
 // ResolveAsync 异步解析IP地址到MAC地址
-func (at *ARPTable) ResolveAsync(ip net.IP, iface string, callback func(net.HardwareAddr, error)) {
+func (at *Table) ResolveAsync(ip net.IP, iface string, callback func(net.HardwareAddr, error)) {
 	// 首先检查缓存
-	if entry, exists := at.LookupEntry(ip); exists && entry.State == ARPStateReachable {
+	if entry, exists := at.LookupEntry(ip); exists && entry.State == StateReachable {
 		if callback != nil {
 			callback(entry.MACAddress, nil)
 		}
@@ -766,7 +766,7 @@ func (at *ARPTable) ResolveAsync(ip net.IP, iface string, callback func(net.Hard
 }
 
 // HandleARPReply 处理ARP响应
-func (at *ARPTable) HandleARPReply(ip net.IP, mac net.HardwareAddr, iface string) error {
+func (at *Table) HandleARPReply(ip net.IP, mac net.HardwareAddr, iface string) error {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -775,11 +775,11 @@ func (at *ARPTable) HandleARPReply(ip net.IP, mac net.HardwareAddr, iface string
 
 	if !exists {
 		// 动态学习新的ARP条目
-		entry = &ARPEntry{
+		entry = &Entry{
 			IPAddress:    ip,
 			MACAddress:   mac,
 			Interface:    iface,
-			State:        ARPStateReachable,
+			State:        StateReachable,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
 			LastAccessed: time.Now(),
@@ -796,7 +796,7 @@ func (at *ARPTable) HandleARPReply(ip net.IP, mac net.HardwareAddr, iface string
 
 		entry.MACAddress = mac
 		entry.Interface = iface
-		entry.State = ARPStateReachable
+		entry.State = StateReachable
 		entry.UpdatedAt = time.Now()
 	}
 
@@ -807,7 +807,7 @@ func (at *ARPTable) HandleARPReply(ip net.IP, mac net.HardwareAddr, iface string
 }
 
 // SendGratuitousARP 发送免费ARP
-func (at *ARPTable) SendGratuitousARP(ip net.IP, mac net.HardwareAddr, iface string) error {
+func (at *Table) SendGratuitousARP(ip net.IP, mac net.HardwareAddr, iface string) error {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
@@ -817,11 +817,11 @@ func (at *ARPTable) SendGratuitousARP(ip net.IP, mac net.HardwareAddr, iface str
 
 	// 更新本地ARP表
 	ipStr := ip.String()
-	entry := &ARPEntry{
+	entry := &Entry{
 		IPAddress:    ip,
 		MACAddress:   mac,
 		Interface:    iface,
-		State:        ARPStateReachable,
+		State:        StateReachable,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		LastAccessed: time.Now(),
@@ -835,11 +835,11 @@ func (at *ARPTable) SendGratuitousARP(ip net.IP, mac net.HardwareAddr, iface str
 }
 
 // handleIPConflict 处理IP地址冲突
-func (at *ARPTable) handleIPConflict(ip net.IP, oldMAC, newMAC net.HardwareAddr, iface string) {
+func (at *Table) handleIPConflict(ip net.IP, oldMAC, newMAC net.HardwareAddr, iface string) {
 	at.stats.ConflictsDetected++
 
 	// 记录冲突事件
-	conflict := ARPConflict{
+	conflict := Conflict{
 		IP:        ip,
 		OldMAC:    oldMAC,
 		NewMAC:    newMAC,
@@ -856,7 +856,7 @@ func (at *ARPTable) handleIPConflict(ip net.IP, oldMAC, newMAC net.HardwareAddr,
 }
 
 // handleMACChange 处理MAC地址变化
-func (at *ARPTable) handleMACChange(ip net.IP, oldMAC, newMAC net.HardwareAddr, iface string) {
+func (at *Table) handleMACChange(ip net.IP, oldMAC, newMAC net.HardwareAddr, iface string) {
 	at.stats.MACChanges++
 
 	// 记录MAC变化事件
@@ -877,17 +877,17 @@ func (at *ARPTable) handleMACChange(ip net.IP, oldMAC, newMAC net.HardwareAddr, 
 }
 
 // GetConflicts 获取IP冲突记录
-func (at *ARPTable) GetConflicts() []ARPConflict {
+func (at *Table) GetConflicts() []Conflict {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
 
-	conflicts := make([]ARPConflict, len(at.conflicts))
+	conflicts := make([]Conflict, len(at.conflicts))
 	copy(conflicts, at.conflicts)
 	return conflicts
 }
 
 // GetMACChanges 获取MAC地址变化记录
-func (at *ARPTable) GetMACChanges() []MACChange {
+func (at *Table) GetMACChanges() []MACChange {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
 
@@ -897,7 +897,7 @@ func (at *ARPTable) GetMACChanges() []MACChange {
 }
 
 // AddStaticEntry 添加静态ARP条目
-func (at *ARPTable) AddStaticEntry(ip net.IP, mac net.HardwareAddr, iface string) error {
+func (at *Table) AddStaticEntry(ip net.IP, mac net.HardwareAddr, iface string) error {
 	if ip == nil {
 		return fmt.Errorf("IP地址不能为空")
 	}
@@ -912,13 +912,13 @@ func (at *ARPTable) AddStaticEntry(ip net.IP, mac net.HardwareAddr, iface string
 	key := ip.String()
 
 	// 静态条目使用特殊的TTL值（-1表示永不过期）
-	at.entries[key] = &ARPEntry{
+	at.entries[key] = &Entry{
 		IPAddress:    ip,
 		MACAddress:   mac,
 		Interface:    iface,
 		Timestamp:    time.Now(),
 		TTL:          -1, // 永不过期
-		State:        ARPStateReachable,
+		State:        StateReachable,
 		RetryCount:   0,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -929,7 +929,7 @@ func (at *ARPTable) AddStaticEntry(ip net.IP, mac net.HardwareAddr, iface string
 }
 
 // IsStatic 检查ARP条目是否为静态条目
-func (at *ARPTable) IsStatic(ip net.IP) bool {
+func (at *Table) IsStatic(ip net.IP) bool {
 	entry, found := at.LookupEntry(ip)
 	if !found {
 		return false
@@ -939,20 +939,20 @@ func (at *ARPTable) IsStatic(ip net.IP) bool {
 }
 
 // FlushTable 清空ARP表
-func (at *ARPTable) FlushTable() {
+func (at *Table) FlushTable() {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
-	at.entries = make(map[string]*ARPEntry)
+	at.entries = make(map[string]*Entry)
 	at.stats.TotalEntries = 0
 }
 
 // GetNeighborsByInterface 按接口获取邻居
-func (at *ARPTable) GetNeighborsByInterface(iface string) []*ARPEntry {
+func (at *Table) GetNeighborsByInterface(iface string) []*Entry {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
 
-	var neighbors []*ARPEntry
+	var neighbors []*Entry
 	for _, entry := range at.entries {
 		if entry.Interface == iface {
 			neighbors = append(neighbors, entry)
@@ -965,12 +965,12 @@ func (at *ARPTable) GetNeighborsByInterface(iface string) []*ARPEntry {
 // parseARPPacket 解析ARP数据包
 //
 //nolint:unused // 此函数在processRawPacket中被使用
-func (at *ARPTable) parseARPPacket(data []byte) (*ARPPacket, error) {
-	if len(data) < ARPPacketSize {
-		return nil, fmt.Errorf("ARP数据包长度不足: %d < %d", len(data), ARPPacketSize)
+func (at *Table) parseARPPacket(data []byte) (*Packet, error) {
+	if len(data) < PacketSize {
+		return nil, fmt.Errorf("ARP数据包长度不足: %d < %d", len(data), PacketSize)
 	}
 
-	packet := &ARPPacket{
+	packet := &Packet{
 		HardwareType:       uint16(data[0])<<8 | uint16(data[1]),
 		ProtocolType:       uint16(data[2])<<8 | uint16(data[3]),
 		HardwareAddrLength: data[4],
@@ -979,16 +979,16 @@ func (at *ARPTable) parseARPPacket(data []byte) (*ARPPacket, error) {
 	}
 
 	// 验证ARP包格式
-	if packet.HardwareType != ARPHardwareTypeEthernet {
+	if packet.HardwareType != HardwareTypeEthernet {
 		return nil, fmt.Errorf("不支持的硬件类型: %d", packet.HardwareType)
 	}
-	if packet.ProtocolType != ARPProtocolTypeIPv4 {
+	if packet.ProtocolType != ProtocolTypeIPv4 {
 		return nil, fmt.Errorf("不支持的协议类型: 0x%04x", packet.ProtocolType)
 	}
-	if packet.HardwareAddrLength != ARPHardwareAddrLen {
+	if packet.HardwareAddrLength != HardwareAddrLen {
 		return nil, fmt.Errorf("无效的硬件地址长度: %d", packet.HardwareAddrLength)
 	}
-	if packet.ProtocolAddrLength != ARPProtocolAddrLen {
+	if packet.ProtocolAddrLength != ProtocolAddrLen {
 		return nil, fmt.Errorf("无效的协议地址长度: %d", packet.ProtocolAddrLength)
 	}
 
@@ -1004,8 +1004,8 @@ func (at *ARPTable) parseARPPacket(data []byte) (*ARPPacket, error) {
 // serializeARPPacket 序列化ARP数据包
 //
 //nolint:unused // 此函数为ARP包序列化保留，可能在发送ARP包时使用
-func (at *ARPTable) serializeARPPacket(packet *ARPPacket) []byte {
-	data := make([]byte, ARPPacketSize)
+func (at *Table) serializeARPPacket(packet *Packet) []byte {
+	data := make([]byte, PacketSize)
 
 	// 设置头部字段
 	data[0] = byte(packet.HardwareType >> 8)
@@ -1029,16 +1029,16 @@ func (at *ARPTable) serializeARPPacket(packet *ARPPacket) []byte {
 // processARPPacket 处理接收到的ARP数据包
 //
 //nolint:unused // 此函数在processRawPacket中被使用
-func (at *ARPTable) processARPPacket(packet *ARPPacket, iface string) error {
+func (at *Table) processARPPacket(packet *Packet, iface string) error {
 	senderIP := net.IP(packet.SenderProtocolAddr[:])
 	senderMAC := net.HardwareAddr(packet.SenderHardwareAddr[:])
 	targetIP := net.IP(packet.TargetProtocolAddr[:])
 
 	switch packet.Operation {
-	case ARPOperationRequest:
+	case OperationRequest:
 		// 处理ARP请求
 		return at.handleARPRequest(senderIP, senderMAC, targetIP, iface)
-	case ARPOperationReply:
+	case OperationReply:
 		// 处理ARP响应
 		return at.HandleARPReply(senderIP, senderMAC, iface)
 	default:
@@ -1049,7 +1049,7 @@ func (at *ARPTable) processARPPacket(packet *ARPPacket, iface string) error {
 // handleARPRequest 处理ARP请求
 //
 //nolint:unused // 此函数在processARPPacket中被使用
-func (at *ARPTable) handleARPRequest(senderIP net.IP, senderMAC net.HardwareAddr, targetIP net.IP, iface string) error {
+func (at *Table) handleARPRequest(senderIP net.IP, senderMAC net.HardwareAddr, targetIP net.IP, iface string) error {
 	// 更新发送方的ARP条目
 	_ = at.AddEntry(senderIP, senderMAC, iface)
 
@@ -1071,14 +1071,14 @@ func (at *ARPTable) handleARPRequest(senderIP net.IP, senderMAC net.HardwareAddr
 // sendARPReply 发送ARP回复
 //
 //nolint:unused // 此函数在handleARPRequest中被使用
-func (at *ARPTable) sendARPReply(targetIP net.IP, targetMAC net.HardwareAddr, sourceIP net.IP, ifaceInfo *InterfaceInfo) error {
+func (at *Table) sendARPReply(targetIP net.IP, targetMAC net.HardwareAddr, sourceIP net.IP, ifaceInfo *InterfaceInfo) error {
 	// 创建ARP响应包
-	packet := &ARPPacket{
-		HardwareType:       ARPHardwareTypeEthernet,
-		ProtocolType:       ARPProtocolTypeIPv4,
-		HardwareAddrLength: ARPHardwareAddrLen,
-		ProtocolAddrLength: ARPProtocolAddrLen,
-		Operation:          ARPOperationReply,
+	packet := &Packet{
+		HardwareType:       HardwareTypeEthernet,
+		ProtocolType:       ProtocolTypeIPv4,
+		HardwareAddrLength: HardwareAddrLen,
+		ProtocolAddrLength: ProtocolAddrLen,
+		Operation:          OperationReply,
 	}
 
 	// 设置发送方地址（本机）
@@ -1095,7 +1095,7 @@ func (at *ARPTable) sendARPReply(targetIP net.IP, targetMAC net.HardwareAddr, so
 }
 
 // startARPListener 启动ARP数据包监听器
-func (at *ARPTable) startARPListener() error {
+func (at *Table) startARPListener() error {
 	// 创建原始套接字来监听ARP数据包
 	// 注意：需要root权限才能创建原始套接字
 
@@ -1112,7 +1112,7 @@ func (at *ARPTable) startARPListener() error {
 }
 
 // createRawSocket 创建原始套接字
-func (at *ARPTable) createRawSocket() error {
+func (at *Table) createRawSocket() error {
 	// 在 macOS 上，AF_PACKET 不可用，返回错误以使用系统命令替代
 	return fmt.Errorf("原始套接字在此平台上不可用，使用系统命令替代")
 }
@@ -1125,21 +1125,21 @@ func htons(i uint16) uint16 {
 }
 
 // startSystemARPMonitor 使用系统命令监听ARP变化
-func (at *ARPTable) startSystemARPMonitor() error {
+func (at *Table) startSystemARPMonitor() error {
 	// 如果无法使用原始套接字，使用系统ARP表监控
 	go at.systemARPMonitorLoop()
 	return nil
 }
 
 // packetListenerLoop 数据包监听循环
-func (at *ARPTable) packetListenerLoop() {
+func (at *Table) packetListenerLoop() {
 	// 在 macOS 上不使用原始套接字，直接返回
 }
 
 // processRawPacket 处理原始数据包
 //
 //nolint:unused // 此函数为原始包处理保留，在网络监听中使用
-func (at *ARPTable) processRawPacket(data []byte) {
+func (at *Table) processRawPacket(data []byte) {
 	// 检查是否是以太网帧
 	if len(data) < 14 {
 		return // 太短，不是有效的以太网帧
@@ -1153,7 +1153,7 @@ func (at *ARPTable) processRawPacket(data []byte) {
 
 	// 提取ARP数据包部分
 	arpData := data[14:]
-	if len(arpData) < ARPPacketSize {
+	if len(arpData) < PacketSize {
 		return
 	}
 
@@ -1168,7 +1168,7 @@ func (at *ARPTable) processRawPacket(data []byte) {
 }
 
 // systemARPMonitorLoop 系统ARP表监控循环
-func (at *ARPTable) systemARPMonitorLoop() {
+func (at *Table) systemARPMonitorLoop() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -1200,7 +1200,7 @@ func (at *ARPTable) systemARPMonitorLoop() {
 }
 
 // getSystemARPTable 获取系统ARP表
-func (at *ARPTable) getSystemARPTable() map[string]string {
+func (at *Table) getSystemARPTable() map[string]string {
 	arpTable := make(map[string]string)
 
 	// 使用arp命令获取系统ARP表
@@ -1233,7 +1233,7 @@ func (at *ARPTable) getSystemARPTable() map[string]string {
 }
 
 // stopARPListener 停止ARP数据包监听器
-func (at *ARPTable) stopARPListener() {
+func (at *Table) stopARPListener() {
 	// 停止所有监听活动
 	at.mu.Lock()
 	defer at.mu.Unlock()
@@ -1250,7 +1250,7 @@ func (at *ARPTable) stopARPListener() {
 }
 
 // GetPendingRequests 获取待处理的ARP请求
-func (at *ARPTable) GetPendingRequests() map[string]*PendingRequest {
+func (at *Table) GetPendingRequests() map[string]*PendingRequest {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
 
@@ -1262,7 +1262,7 @@ func (at *ARPTable) GetPendingRequests() map[string]*PendingRequest {
 }
 
 // ClearPendingRequests 清除所有待处理的ARP请求
-func (at *ARPTable) ClearPendingRequests() {
+func (at *Table) ClearPendingRequests() {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 

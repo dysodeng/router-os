@@ -147,7 +147,7 @@ type Engine struct {
 	interfaceManager *interfaces.Manager
 
 	// arpTable ARP表
-	arpTable *arp.ARPTable
+	arpTable *arp.Table
 
 	// running 运行状态
 	running bool
@@ -196,7 +196,7 @@ type Engine struct {
 func NewForwardingEngine(
 	routingTable routing.RoutingTableInterface,
 	interfaceManager *interfaces.Manager,
-	arpTable *arp.ARPTable,
+	arpTable *arp.Table,
 ) *Engine {
 	// 初始化工作线程池
 	workerCount := 4
@@ -1770,7 +1770,7 @@ func (fe *Engine) ProcessPacketBatch(packets []*IPPacket) []error {
 
 // GetForwardingTable 获取转发表信息
 // 返回当前的路由和ARP信息，用于调试和监控
-func (fe *Engine) GetForwardingTable() ([]routing.Route, []*arp.ARPEntry) {
+func (fe *Engine) GetForwardingTable() ([]routing.Route, []*arp.Entry) {
 	routes := fe.routingTable.GetAllRoutes()
 	arpEntries := fe.arpTable.GetAllEntries()
 
