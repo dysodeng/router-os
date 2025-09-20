@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - 路由器管理系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {{block "head" .}}{{end}}
+</head>
+<body>
+    <div id="app">
+        {{template "content" .}}
+    </div>
+    
+    <script src="/static/js/common.js"></script>
+    {{block "scripts" .}}{{end}}
+</body>
+</html>

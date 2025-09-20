@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="container">
+    {{template "header" .}}
+    
+    <!-- 认证检查提示 -->
+    <div id="auth-check" style="display: block; text-align: center; padding: 20px;">
+        <p>正在验证身份...</p>
+    </div>
+    
+    <!-- 未认证提示 -->
+    <div id="unauthorized" style="display: none; text-align: center; padding: 20px; color: red;">
+        <p>未登录或登录已过期，正在跳转到登录页面...</p>
+    </div>
+    
+    <!-- 页面内容 -->
+    <div id="page-content" style="display: none;">
+        <div class="content">
+            <h2>路由表管理</h2>
+            <button class="btn" onclick="showAddRouteForm()">添加路由</button>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>目标网络</th>
+                        <th>网关</th>
+                        <th>接口</th>
+                        <th>跃点数</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="routesList">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/auth.js"></script>
+<script src="/static/js/routes.js"></script>
+{{end}}

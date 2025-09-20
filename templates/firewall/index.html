@@ -1,0 +1,42 @@
+{{define "content"}}
+<div class="container">
+    {{template "header" .}}
+    
+    <!-- 认证检查提示 -->
+    <div id="auth-check" style="display: block; text-align: center; padding: 20px;">
+        <p>正在验证身份...</p>
+    </div>
+    
+    <!-- 未认证提示 -->
+    <div id="unauthorized" style="display: none; text-align: center; padding: 20px; color: red;">
+        <p>未登录或登录已过期，正在跳转到登录页面...</p>
+    </div>
+    
+    <!-- 页面内容 -->
+    <div id="page-content" style="display: none;">
+        <div class="content">
+            <h2>防火墙规则</h2>
+            <button class="btn" onclick="showAddFirewallRuleForm()">添加规则</button>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>动作</th>
+                        <th>源地址</th>
+                        <th>目标地址</th>
+                        <th>端口</th>
+                        <th>协议</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="firewallRulesList">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/auth.js"></script>
+<script src="/static/js/firewall.js"></script>
+{{end}}

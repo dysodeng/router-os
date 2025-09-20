@@ -1,0 +1,16 @@
+{{define "header"}}
+<div class="header">
+    <h1>路由器管理系统</h1>
+    <div class="nav">
+        <a class="nav-item" href="/dashboard">仪表板</a>
+        <a class="nav-item" href="/interfaces">网络接口</a>
+        <a class="nav-item" href="/routes">路由表</a>
+        <a class="nav-item" href="/arp">ARP表</a>
+        <a class="nav-item" href="/firewall">防火墙</a>
+        <a class="nav-item" href="/dhcp">DHCP</a>
+        <a class="nav-item" href="/vpn">VPN</a>
+        <a class="nav-item" href="/qos">QoS</a>
+        <a class="nav-item" onclick="logout()" style="margin-left: auto;">退出</a>
+    </div>
+</div>
+{{end}}

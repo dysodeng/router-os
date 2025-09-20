@@ -119,12 +119,13 @@ type Server struct {
 	enabled bool
 
 	// Configuration
-	serverIP   net.IP
-	subnetMask net.IPMask
-	gateway    net.IP
-	dnsServers []net.IP
-	domainName string
-	leaseTime  time.Duration
+	serverIP      net.IP
+	subnetMask    net.IPMask
+	gateway       net.IP
+	dnsServers    []net.IP
+	domainName    string
+	leaseTime     time.Duration
+	interfaceName string
 
 	// Address pool
 	poolStart net.IP
@@ -1091,7 +1092,7 @@ func (s *Server) GetConfig() *Config {
 		DNSServers:       s.dnsServers,
 		DomainName:       s.domainName,
 		LeaseTime:        s.leaseTime,
-		Interface:        "eth0", // Default interface
+		Interface:        s.interfaceName,
 		ListenAddress:    "0.0.0.0",
 		DefaultLeaseTime: s.leaseTime,
 	}
@@ -1144,6 +1145,7 @@ func (s *Server) SetConfig(config *Config) {
 	s.dnsServers = config.DNSServers
 	s.domainName = config.DomainName
 	s.leaseTime = config.LeaseTime
+	s.interfaceName = config.Interface
 
 	// Handle new fields
 	if config.DefaultLeaseTime > 0 {

@@ -1,0 +1,52 @@
+{{define "content"}}
+<div class="container">
+    {{template "header" .}}
+    
+    <!-- 认证检查提示 -->
+    <div id="authCheck" style="text-align: center; padding: 50px;">
+        <p>正在验证身份...</p>
+    </div>
+    
+    <!-- 未认证提示 -->
+    <div id="unauthenticated" style="display: none; text-align: center; padding: 50px;">
+        <h2>需要登录</h2>
+        <p>请先登录以访问仪表板</p>
+        <a href="/login" class="btn">前往登录</a>
+    </div>
+    
+    <!-- 仪表板内容 -->
+    <div id="dashboardContent" class="content" style="display: none;">
+        <h2>系统状态</h2>
+        <div class="status-grid">
+            <div class="card">
+                <div class="status-item">
+                    <div class="status-value" id="interfaceCount">-</div>
+                    <div class="status-label">网络接口</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="status-item">
+                    <div class="status-value" id="routeCount">-</div>
+                    <div class="status-label">路由条目</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="status-item">
+                    <div class="status-value" id="arpCount">-</div>
+                    <div class="status-label">ARP条目</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="status-item">
+                    <div class="status-value" id="dhcpLeases">-</div>
+                    <div class="status-label">DHCP租约</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/dashboard.js"></script>
+{{end}}

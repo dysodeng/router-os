@@ -1,0 +1,55 @@
+{{define "content"}}
+<div class="container">
+    {{template "header" .}}
+    
+    <!-- 认证检查提示 -->
+    <div id="auth-check" style="display: block; text-align: center; padding: 20px;">
+        <p>正在验证身份...</p>
+    </div>
+    
+    <!-- 未认证提示 -->
+    <div id="unauthorized" style="display: none; text-align: center; padding: 20px; color: red;">
+        <p>未登录或登录已过期，正在跳转到登录页面...</p>
+    </div>
+    
+    <!-- 页面内容 -->
+    <div id="page-content" style="display: none;">
+        <div class="content">
+            <h2>系统监控</h2>
+            
+            <div class="monitor-section">
+                <h3>系统状态</h3>
+                <div id="systemStats">
+                    <p>加载中...</p>
+                </div>
+            </div>
+            
+            <div class="monitor-section">
+                <h3>网络状态</h3>
+                <div id="networkStats">
+                    <p>加载中...</p>
+                </div>
+            </div>
+            
+            <div class="monitor-section">
+                <h3>防火墙状态</h3>
+                <div id="firewallStats">
+                    <p>加载中...</p>
+                </div>
+            </div>
+            
+            <div class="monitor-section">
+                <h3>路由状态</h3>
+                <div id="routingStats">
+                    <p>加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/auth.js"></script>
+<script src="/static/js/monitor.js"></script>
+{{end}}

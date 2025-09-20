@@ -274,9 +274,13 @@ func main() {
 			Password: appConfig.Web.Password,
 		}
 		webServer = web.NewWebServer(webConfig, router)
-		if err := webServer.Start(); err != nil {
-			log.Fatalf("启动Web服务器失败: %v", err)
-		}
+
+		go func() {
+			if err := webServer.Start(); err != nil {
+				log.Printf("Web服务器启动失败: %v", err)
+			}
+		}()
+
 		log.Printf("Web管理界面启动成功: http://%s:%d", appConfig.Web.Host, appConfig.Web.Port)
 		log.Printf("用户名: %s, 密码: %s", appConfig.Web.Username, appConfig.Web.Password)
 	} else {
