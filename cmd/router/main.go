@@ -22,6 +22,7 @@ import (
 	"router-os/internal/nat"
 	"router-os/internal/netconfig"
 	"router-os/internal/port"
+	"router-os/internal/port/dao"
 	"router-os/internal/qos"
 	"router-os/internal/routing"
 	"router-os/internal/vpn"
@@ -82,6 +83,17 @@ func main() {
 		log.Fatalf("连接数据库失败: %v", err)
 	}
 	log.Printf("数据库连接成功 - 类型: %s", dbConfig.Type)
+
+	// 执行数据库迁移，自动创建数据表
+	log.Println("执行数据库迁移，创建数据表...")
+	if err = db.Migrate(
+		&dao.PortConfigModel{},
+		&dao.NetworkTopologyModel{},
+		&dao.PortRoleHistoryModel{},
+	); err != nil {
+		log.Fatalf("数据库迁移失败: %v", err)
+	}
+	log.Println("数据库迁移完成，所有数据表已创建")
 
 	// 确保程序退出时关闭数据库连接
 	defer func() {
@@ -219,7 +231,7 @@ func main() {
 	}
 
 	log.Println("初始化端口管理器...")
-	portManager := port.NewManager(interfaceManager, natManager)
+	portManager := port.NewManager(interfaceManager, natManager, db)
 	if err = portManager.Start(); err != nil {
 		log.Fatalf("启动端口管理器失败: %v", err)
 	}

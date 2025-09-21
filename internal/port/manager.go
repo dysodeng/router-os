@@ -1,13 +1,60 @@
 package port
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"sync"
 
+	"router-os/internal/database"
 	"router-os/internal/interfaces"
+	"router-os/internal/port/dao"
 )
+
+// 转换函数：在 port 包和 dao 包的结构体之间进行转换
+
+// toDAOPortConfig 将 port.PortConfig 转换为 dao.PortConfig
+func toDAOPortConfig(config *PortConfig) *dao.PortConfig {
+	return &dao.PortConfig{
+		InterfaceName: config.InterfaceName,
+		Role:          config.Role,
+		IPAddress:     config.IPAddress,
+		Netmask:       config.Netmask,
+		Gateway:       config.Gateway,
+		DHCPEnabled:   config.DHCPEnabled,
+		Description:   config.Description,
+	}
+}
+
+// fromDAOPortConfig 将 dao.PortConfig 转换为 port.PortConfig
+func fromDAOPortConfig(config *dao.PortConfig) *PortConfig {
+	return &PortConfig{
+		InterfaceName: config.InterfaceName,
+		Role:          config.Role,
+		IPAddress:     config.IPAddress,
+		Netmask:       config.Netmask,
+		Gateway:       config.Gateway,
+		DHCPEnabled:   config.DHCPEnabled,
+		Description:   config.Description,
+	}
+}
+
+// toDAONetworkTopology 将 port.NetworkTopology 转换为 dao.NetworkTopology
+func toDAONetworkTopology(topology *NetworkTopology) *dao.NetworkTopology {
+	return &dao.NetworkTopology{
+		NATEnabled:          topology.NATEnabled,
+		IPForwardingEnabled: topology.IPForwardingEnabled,
+	}
+}
+
+// fromDAONetworkTopology 将 dao.NetworkTopology 转换为 port.NetworkTopology
+func fromDAONetworkTopology(topology *dao.NetworkTopology) *NetworkTopology {
+	return &NetworkTopology{
+		NATEnabled:          topology.NATEnabled,
+		IPForwardingEnabled: topology.IPForwardingEnabled,
+	}
+}
 
 // Manager 端口管理器
 // 负责网络接口的角色分配、NAT规则管理和路由配置
@@ -32,6 +79,10 @@ type Manager struct {
 	// natManager NAT管理器引用
 	// 用于配置和管理NAT转发规则
 	natManager NATManager
+
+	// portService 端口管理服务
+	// 用于数据存储和配置管理
+	portService *dao.PortService
 
 	// mu 读写互斥锁
 	// 保护端口配置的并发访问
@@ -128,11 +179,12 @@ type NetworkTopology struct {
 //
 //	ifaceManager := interfaces.NewManager()
 //	natManager := nat.NewIptablesManager()
-//	portManager := NewManager(ifaceManager, natManager)
-func NewManager(interfaceManager *interfaces.Manager, natManager NATManager) *Manager {
+//	portManager := NewManager(ifaceManager, natManager, db)
+func NewManager(interfaceManager *interfaces.Manager, natManager NATManager, db database.Database) *Manager {
 	return &Manager{
 		interfaceManager: interfaceManager,
 		natManager:       natManager,
+		portService:      dao.NewPortService(db),
 		running:          false,
 	}
 }
@@ -145,9 +197,10 @@ func NewManager(interfaceManager *interfaces.Manager, natManager NATManager) *Ma
 //
 // 启动过程：
 // 1. 检查依赖组件状态
-// 2. 启用IP转发功能
-// 3. 应用当前端口配置
-// 4. 设置运行状态
+// 2. 初始化数据库表
+// 3. 启用IP转发功能
+// 4. 应用当前端口配置
+// 5. 设置运行状态
 func (m *Manager) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -161,9 +214,31 @@ func (m *Manager) Start() error {
 		return fmt.Errorf("接口管理器未运行，请先启动接口管理器")
 	}
 
+	// 初始化数据库表
+	if err := m.portService.InitializeTables(); err != nil {
+		return fmt.Errorf("初始化数据库表失败: %v", err)
+	}
+
 	// 启用IP转发
 	if err := m.natManager.EnableIPForwarding(); err != nil {
 		return fmt.Errorf("启用IP转发失败: %v", err)
+	}
+
+	// 加载并应用已保存的端口配置
+	ctx := context.Background()
+	savedDAOConfigs, err := m.portService.GetAllPortConfigs(ctx)
+	if err != nil {
+		log.Printf("加载已保存的端口配置失败: %v", err)
+	} else {
+		log.Printf("加载到 %d 个已保存的端口配置", len(savedDAOConfigs))
+		for _, daoConfig := range savedDAOConfigs {
+			config := fromDAOPortConfig(daoConfig)
+			if err := m.restorePortRole(config.InterfaceName, config.Role); err != nil {
+				log.Printf("恢复端口配置失败 [%s -> %s]: %v", config.InterfaceName, config.Role.String(), err)
+			} else {
+				log.Printf("成功恢复端口配置: %s -> %s", config.InterfaceName, config.Role.String())
+			}
+		}
 	}
 
 	m.running = true
@@ -221,33 +296,56 @@ func (m *Manager) AssignPortRole(interfaceName string, role interfaces.PortRole)
 	currentRole := iface.Role
 	if currentRole != role {
 		// 清除旧角色的规则
-		if err := m.cleanupRoleRules(interfaceName, currentRole); err != nil {
+		if err = m.cleanupRoleRules(interfaceName, currentRole); err != nil {
 			log.Printf("清除接口 %s 旧角色 %s 的规则时出错: %v", interfaceName, currentRole.String(), err)
 			// 不返回错误，继续设置新角色
 		}
 	}
 
 	// 设置接口角色
-	if err := m.interfaceManager.SetInterfaceRole(interfaceName, role); err != nil {
+	if err = m.interfaceManager.SetInterfaceRole(interfaceName, role); err != nil {
 		return fmt.Errorf("设置接口角色失败: %v", err)
 	}
 
 	// 根据角色应用相应配置
 	switch role {
 	case interfaces.PortRoleWAN:
-		if err := m.configureWANInterface(interfaceName); err != nil {
+		if err = m.configureWANInterface(interfaceName); err != nil {
 			return fmt.Errorf("配置WAN接口失败: %v", err)
 		}
 	case interfaces.PortRoleLAN:
-		if err := m.configureLANInterface(interfaceName); err != nil {
+		if err = m.configureLANInterface(interfaceName); err != nil {
 			return fmt.Errorf("配置LAN接口失败: %v", err)
 		}
 	case interfaces.PortRoleDMZ:
-		if err := m.configureDMZInterface(interfaceName); err != nil {
+		if err = m.configureDMZInterface(interfaceName); err != nil {
 			return fmt.Errorf("配置DMZ接口失败: %v", err)
 		}
 	case interfaces.PortRoleUnassigned:
 		log.Printf("接口 %s 设置为未分配角色，已清除相关规则", interfaceName)
+	}
+
+	// 保存端口配置到数据库
+	ctx := context.Background()
+	portConfig := &PortConfig{
+		InterfaceName: interfaceName,
+		Role:          role,
+		Description:   fmt.Sprintf("自动分配的%s角色", role.String()),
+	}
+
+	// 检查配置是否已存在
+	existingDAOConfig, err := m.portService.GetPortConfig(ctx, interfaceName)
+	if err == nil && existingDAOConfig != nil {
+		// 更新现有配置的角色
+		if err = m.portService.UpdatePortRole(ctx, interfaceName, role, "管理器自动分配"); err != nil {
+			log.Printf("更新端口配置到数据库失败: %v", err)
+		}
+	} else {
+		// 创建新的端口配置
+		daoConfig := toDAOPortConfig(portConfig)
+		if err = m.portService.CreatePortConfig(ctx, daoConfig); err != nil {
+			log.Printf("保存端口配置到数据库失败: %v", err)
+		}
 	}
 
 	log.Printf("成功为接口 %s 分配角色: %s", interfaceName, role.String())
@@ -299,12 +397,12 @@ func (m *Manager) configureLANInterface(interfaceName string) error {
 
 		for _, wanIface := range wanInterfaces {
 			// 添加MASQUERADE规则
-			if err := m.natManager.AddMasqueradeRule(wanIface.Name, lanNetwork); err != nil {
+			if err = m.natManager.AddMasqueradeRule(wanIface.Name, lanNetwork); err != nil {
 				log.Printf("警告: 为LAN接口 %s 添加NAT规则失败: %v", interfaceName, err)
 			}
 
 			// 添加转发规则
-			if err := m.natManager.AddForwardRule(interfaceName, wanIface.Name); err != nil {
+			if err = m.natManager.AddForwardRule(interfaceName, wanIface.Name); err != nil {
 				log.Printf("警告: 添加转发规则失败 (%s -> %s): %v",
 					interfaceName, wanIface.Name, err)
 			}
@@ -404,6 +502,144 @@ func (m *Manager) IsRunning() bool {
 	return m.running
 }
 
+// GetPortConfig 获取端口配置
+func (m *Manager) GetPortConfig(interfaceName string) (*PortConfig, error) {
+	ctx := context.Background()
+	daoConfig, err := m.portService.GetPortConfig(ctx, interfaceName)
+	if err != nil {
+		return nil, err
+	}
+	if daoConfig == nil {
+		return nil, nil
+	}
+	return fromDAOPortConfig(daoConfig), nil
+}
+
+// GetAllPortConfigs 获取所有端口配置
+func (m *Manager) GetAllPortConfigs() ([]*PortConfig, error) {
+	ctx := context.Background()
+	daoConfigs, err := m.portService.GetAllPortConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	configs := make([]*PortConfig, len(daoConfigs))
+	for i, daoConfig := range daoConfigs {
+		configs[i] = fromDAOPortConfig(daoConfig)
+	}
+	return configs, nil
+}
+
+// UpdatePortConfig 更新端口配置
+func (m *Manager) UpdatePortConfig(config *PortConfig) error {
+	ctx := context.Background()
+
+	// 先更新数据库
+	daoConfig := toDAOPortConfig(config)
+	if err := m.portService.UpdatePortConfig(ctx, daoConfig); err != nil {
+		return fmt.Errorf("更新端口配置失败: %v", err)
+	}
+
+	// 如果管理器正在运行，应用新的角色配置
+	if m.running {
+		if err := m.AssignPortRole(config.InterfaceName, config.Role); err != nil {
+			log.Printf("应用端口角色配置失败: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// DeletePortConfig 删除端口配置
+func (m *Manager) DeletePortConfig(interfaceName string) error {
+	ctx := context.Background()
+
+	// 先将端口角色设置为未分配
+	if m.running {
+		if err := m.AssignPortRole(interfaceName, interfaces.PortRoleUnassigned); err != nil {
+			log.Printf("重置端口角色失败: %v", err)
+		}
+	}
+
+	// 删除数据库配置
+	return m.portService.DeletePortConfig(ctx, interfaceName)
+}
+
+// GetPortConfigStats 获取端口配置统计信息
+func (m *Manager) GetPortConfigStats() (map[string]interface{}, error) {
+	ctx := context.Background()
+	return m.portService.GetPortConfigStats(ctx)
+}
+
+// restorePortRole 恢复端口角色配置（启动时使用）
+// 与 AssignPortRole 不同，此方法专门用于启动时恢复配置，
+// 会更仔细地检查当前状态，避免重复添加规则
+func (m *Manager) restorePortRole(interfaceName string, role interfaces.PortRole) error {
+	// 检查接口是否存在
+	iface, err := m.interfaceManager.GetInterface(interfaceName)
+	if err != nil {
+		log.Printf("接口 %s 不存在，跳过恢复: %v", interfaceName, err)
+		return nil // 不返回错误，继续处理其他接口
+	}
+
+	// 获取当前角色
+	currentRole := iface.Role
+
+	// 如果角色已经正确，只需要确保规则存在
+	if currentRole == role {
+		log.Printf("接口 %s 角色已正确 (%s)，验证规则配置", interfaceName, role.String())
+		// 验证并确保规则配置正确
+		return m.ensureRoleRules(interfaceName, role)
+	}
+
+	// 如果角色不同，需要清除旧规则并设置新角色
+	if currentRole != interfaces.PortRoleUnassigned {
+		log.Printf("清除接口 %s 的旧角色 %s 规则", interfaceName, currentRole.String())
+		if err = m.cleanupRoleRules(interfaceName, currentRole); err != nil {
+			log.Printf("清除接口 %s 旧角色规则时出错: %v", interfaceName, err)
+			// 继续执行，不返回错误
+		}
+	}
+
+	// 设置接口角色
+	if err = m.interfaceManager.SetInterfaceRole(interfaceName, role); err != nil {
+		return fmt.Errorf("设置接口角色失败: %v", err)
+	}
+
+	// 应用角色配置
+	return m.applyRoleConfiguration(interfaceName, role)
+}
+
+// ensureRoleRules 确保角色规则正确配置
+func (m *Manager) ensureRoleRules(interfaceName string, role interfaces.PortRole) error {
+	// 对于启动时的规则验证，我们可以简单地重新应用配置
+	// 大多数网络配置命令是幂等的，重复执行不会造成问题
+	return m.applyRoleConfiguration(interfaceName, role)
+}
+
+// applyRoleConfiguration 应用角色配置
+func (m *Manager) applyRoleConfiguration(interfaceName string, role interfaces.PortRole) error {
+	switch role {
+	case interfaces.PortRoleWAN:
+		if err := m.configureWANInterface(interfaceName); err != nil {
+			return fmt.Errorf("配置WAN接口失败: %v", err)
+		}
+	case interfaces.PortRoleLAN:
+		if err := m.configureLANInterface(interfaceName); err != nil {
+			return fmt.Errorf("配置LAN接口失败: %v", err)
+		}
+	case interfaces.PortRoleDMZ:
+		if err := m.configureDMZInterface(interfaceName); err != nil {
+			return fmt.Errorf("配置DMZ接口失败: %v", err)
+		}
+	case interfaces.PortRoleUnassigned:
+		log.Printf("接口 %s 设置为未分配角色", interfaceName)
+	}
+
+	log.Printf("成功配置接口 %s 为 %s 角色", interfaceName, role.String())
+	return nil
+}
+
 // calculateNetworkCIDR 计算网络地址的CIDR表示法
 // 根据IP地址和子网掩码计算正确的网络地址和CIDR前缀
 func (m *Manager) calculateNetworkCIDR(ip net.IP, mask net.IPMask) string {
@@ -492,7 +728,7 @@ func (m *Manager) cleanupLANRules(lanInterface string) error {
 			lanNetwork := m.calculateNetworkCIDR(lanIface.IPAddress, lanIface.Netmask)
 
 			// 移除MASQUERADE规则
-			if err := m.natManager.RemoveMasqueradeRule(wanIface.Name, lanNetwork); err != nil {
+			if err = m.natManager.RemoveMasqueradeRule(wanIface.Name, lanNetwork); err != nil {
 				log.Printf("移除MASQUERADE规则失败 %s -> %s: %v", lanNetwork, wanIface.Name, err)
 			} else {
 				log.Printf("成功移除MASQUERADE规则: %s -> %s", lanNetwork, wanIface.Name)
@@ -500,7 +736,7 @@ func (m *Manager) cleanupLANRules(lanInterface string) error {
 		}
 
 		// 移除转发规则
-		if err := m.natManager.RemoveForwardRule(lanInterface, wanIface.Name); err != nil {
+		if err = m.natManager.RemoveForwardRule(lanInterface, wanIface.Name); err != nil {
 			log.Printf("移除转发规则失败 %s <-> %s: %v", lanInterface, wanIface.Name, err)
 		} else {
 			log.Printf("成功移除转发规则: %s <-> %s", lanInterface, wanIface.Name)

@@ -29,6 +29,14 @@ type Database interface {
 	// 分页查询
 	FindWithPagination(ctx context.Context, condition interface{}, models interface{}, offset, limit int) (int64, error)
 
+	// 排序查询
+	FindAllWithOrder(ctx context.Context, condition interface{}, models interface{}, orderBy string) error
+	FindWithPaginationAndOrder(ctx context.Context, condition interface{}, models interface{}, offset, limit int, orderBy string) (int64, error)
+
+	// 带参数的条件查询
+	FindAllWithConditionAndOrder(ctx context.Context, condition string, args []interface{}, models interface{}, orderBy string) error
+	FindWithConditionPaginationAndOrder(ctx context.Context, condition string, args []interface{}, models interface{}, offset, limit int, orderBy string) (int64, error)
+
 	// 原生查询
 	Raw(ctx context.Context, sql string, values ...interface{}) (interface{}, error)
 	Exec(ctx context.Context, sql string, values ...interface{}) error

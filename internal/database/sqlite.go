@@ -224,6 +224,64 @@ func (s *SQLiteDatabase) FindWithPagination(ctx context.Context, condition inter
 	return total, result.Error
 }
 
+// FindAllWithOrder 根据条件查询所有记录并排序
+func (s *SQLiteDatabase) FindAllWithOrder(ctx context.Context, condition interface{}, models interface{}, orderBy string) error {
+	if s.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	result := s.db.WithContext(ctx).Where(condition).Order(orderBy).Find(models)
+	return result.Error
+}
+
+// FindWithPaginationAndOrder 分页查询并排序
+func (s *SQLiteDatabase) FindWithPaginationAndOrder(ctx context.Context, condition interface{}, models interface{}, offset, limit int, orderBy string) (int64, error) {
+	if s.db == nil {
+		return 0, fmt.Errorf("database not connected")
+	}
+
+	var total int64
+
+	// 先获取总数
+	countResult := s.db.WithContext(ctx).Model(models).Where(condition).Count(&total)
+	if countResult.Error != nil {
+		return 0, countResult.Error
+	}
+
+	// 再获取分页数据并排序
+	result := s.db.WithContext(ctx).Where(condition).Order(orderBy).Offset(offset).Limit(limit).Find(models)
+	return total, result.Error
+}
+
+// FindAllWithConditionAndOrder 根据字符串条件和参数查询所有记录并排序
+func (s *SQLiteDatabase) FindAllWithConditionAndOrder(ctx context.Context, condition string, args []interface{}, models interface{}, orderBy string) error {
+	if s.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	result := s.db.WithContext(ctx).Where(condition, args...).Order(orderBy).Find(models)
+	return result.Error
+}
+
+// FindWithConditionPaginationAndOrder 根据字符串条件和参数分页查询并排序
+func (s *SQLiteDatabase) FindWithConditionPaginationAndOrder(ctx context.Context, condition string, args []interface{}, models interface{}, offset, limit int, orderBy string) (int64, error) {
+	if s.db == nil {
+		return 0, fmt.Errorf("database not connected")
+	}
+
+	var total int64
+
+	// 先获取总数
+	countResult := s.db.WithContext(ctx).Model(models).Where(condition, args...).Count(&total)
+	if countResult.Error != nil {
+		return 0, countResult.Error
+	}
+
+	// 再获取分页数据并排序
+	result := s.db.WithContext(ctx).Where(condition, args...).Order(orderBy).Offset(offset).Limit(limit).Find(models)
+	return total, result.Error
+}
+
 // Raw 执行原生查询
 func (s *SQLiteDatabase) Raw(ctx context.Context, sql string, values ...interface{}) (interface{}, error) {
 	if s.db == nil {
