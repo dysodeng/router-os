@@ -298,10 +298,10 @@ func main() {
 	}
 
 	// 根据配置决定是否启动Web管理界面
-	var webServer *web.WebServer
+	var webServer *web.Server
 	if appConfig.Web.Enabled {
 		log.Println("Web管理界面已启用，正在启动...")
-		webConfig := web.WebConfig{
+		webConfig := web.Config{
 			Port:     appConfig.Web.Port,
 			Host:     appConfig.Web.Host,
 			Username: appConfig.Web.Username,

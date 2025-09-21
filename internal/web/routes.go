@@ -10,7 +10,7 @@ import (
 )
 
 // setupRoutes 设置路由
-func (ws *WebServer) setupRoutes() *http.ServeMux {
+func (ws *Server) setupRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// 创建中间件

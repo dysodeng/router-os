@@ -17,8 +17,8 @@ import (
 	"router-os/internal/vpn"
 )
 
-// WebServer Web管理服务器
-type WebServer struct {
+// Server Web管理服务器
+type Server struct {
 	// server HTTP服务器
 	server *http.Server
 
@@ -29,11 +29,11 @@ type WebServer struct {
 	running bool
 
 	// config 配置
-	config WebConfig
+	config Config
 }
 
-// WebConfig Web服务器配置
-type WebConfig struct {
+// Config Web服务器配置
+type Config struct {
 	// Port 监听端口
 	Port int `json:"port"`
 
@@ -87,15 +87,15 @@ type RouterInstance struct {
 }
 
 // NewWebServer 创建Web服务器
-func NewWebServer(config WebConfig, router *RouterInstance) *WebServer {
-	return &WebServer{
+func NewWebServer(config Config, router *RouterInstance) *Server {
+	return &Server{
 		config: config,
 		router: router,
 	}
 }
 
 // Start 启动Web服务器
-func (ws *WebServer) Start() error {
+func (ws *Server) Start() error {
 	// 使用新的模块化路由配置
 	mux := ws.setupRoutes()
 
@@ -115,7 +115,7 @@ func (ws *WebServer) Start() error {
 }
 
 // Stop 停止Web服务器
-func (ws *WebServer) Stop() error {
+func (ws *Server) Stop() error {
 	ws.running = false
 	if ws.server != nil {
 		// 创建5秒超时的context用于优雅关闭
@@ -132,6 +132,6 @@ func (ws *WebServer) Stop() error {
 }
 
 // IsRunning 检查服务器是否正在运行
-func (ws *WebServer) IsRunning() bool {
+func (ws *Server) IsRunning() bool {
 	return ws.running
 }
