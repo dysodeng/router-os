@@ -5,9 +5,32 @@
     box-sizing: border-box; 
 }
 
+/* 禁用弹性滚动效果 */
+html, body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+}
+
 body { 
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-    background: #f5f5f5; 
+    background: #f5f5f5;
+    /* 禁用Safari的弹性滚动 */
+    position: fixed;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
+
+/* 创建一个可滚动的容器 */
+.scroll-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
 }
 
 .container { 
@@ -212,4 +235,378 @@ body {
 
 .mb-20 {
     margin-bottom: 20px;
+}
+
+/* DHCP页面专用样式 - 中国审美风格 */
+
+/* 页面标题区域 */
+.page-header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 25px 0;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.page-header h1 {
+    color: #333;
+    font-size: 28px;
+    font-weight: 500;
+    margin: 0 0 8px 0;
+    letter-spacing: 1px;
+}
+
+.page-desc {
+    color: #666;
+    font-size: 14px;
+    margin: 0;
+    font-weight: normal;
+}
+
+/* 面板样式 */
+.config-panel,
+.leases-panel {
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.panel-header {
+    background: #fafafa;
+    border-bottom: 1px solid #e8e8e8;
+    padding: 15px 20px;
+    border-radius: 6px 6px 0 0;
+}
+
+.panel-header h2 {
+    color: #333;
+    font-size: 16px;
+    font-weight: 500;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.panel-body {
+    padding: 20px;
+}
+
+/* 配置区域样式 */
+.config-section {
+    margin-bottom: 25px;
+}
+
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.config-item {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 4px;
+    border-left: 3px solid #1890ff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.config-item label {
+    display: block;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 0;
+    font-size: 14px;
+    min-width: 100px;
+}
+
+.config-item span {
+    flex: 1;
+    margin: 0 15px;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    background: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #d9d9d9;
+    font-size: 14px;
+    color: #333;
+}
+
+.config-item .btn {
+    min-width: 60px;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+/* 状态样式 */
+.status-enabled {
+    color: #52c41a !important;
+    background: #f6ffed !important;
+    border-color: #b7eb8f !important;
+    font-weight: 500;
+}
+
+.status-disabled {
+    color: #ff4d4f !important;
+    background: #fff2f0 !important;
+    border-color: #ffccc7 !important;
+    font-weight: 500;
+}
+
+.status-active {
+    color: #52c41a !important;
+    background: #f6ffed !important;
+    border-color: #b7eb8f !important;
+    font-weight: 500;
+}
+
+.status-expired {
+    color: #ff4d4f !important;
+    background: #fff2f0 !important;
+    border-color: #ffccc7 !important;
+    font-weight: 500;
+}
+
+/* 按钮样式 */
+.btn-success {
+    background: #52c41a;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #73d13d;
+}
+
+.btn-warning {
+    background: #faad14;
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #ffc53d;
+}
+
+.btn-danger {
+    background: #ff4d4f;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #ff7875;
+}
+
+.btn-info {
+    background: #1890ff;
+    color: white;
+}
+
+.btn-info:hover {
+    background: #40a9ff;
+}
+
+.btn-primary {
+    background: #1890ff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #40a9ff;
+}
+
+.btn-secondary {
+    background: #f5f5f5;
+    color: #333;
+    border: 1px solid #d9d9d9;
+}
+
+.btn-secondary:hover {
+    background: #e6f7ff;
+    border-color: #1890ff;
+    color: #1890ff;
+}
+
+/* 表格样式 */
+.dhcp-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    background: white;
+    border: 1px solid #e8e8e8;
+    border-radius: 4px;
+    overflow: hidden;
+    table-layout: fixed;
+}
+
+.dhcp-table th {
+    background: #fafafa;
+    color: #333;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 500;
+    font-size: 14px;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+.dhcp-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #333;
+    font-size: 14px;
+    word-break: break-all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dhcp-table tr:hover {
+    background: #f5f5f5;
+}
+
+.dhcp-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* 租约表格列宽设置 */
+.dhcp-table th:nth-child(1),
+.dhcp-table td:nth-child(1) {
+    width: 140px; /* IP地址 */
+}
+
+.dhcp-table th:nth-child(2),
+.dhcp-table td:nth-child(2) {
+    width: 160px; /* MAC地址 */
+}
+
+.dhcp-table th:nth-child(3),
+.dhcp-table td:nth-child(3) {
+    width: 120px; /* 主机名 */
+}
+
+.dhcp-table th:nth-child(4),
+.dhcp-table td:nth-child(4) {
+    width: 80px; /* 状态 */
+}
+
+.dhcp-table th:nth-child(5),
+.dhcp-table td:nth-child(5) {
+    width: 140px; /* 开始时间 */
+}
+
+.dhcp-table th:nth-child(6),
+.dhcp-table td:nth-child(6) {
+    width: 140px; /* 结束时间 */
+}
+
+.dhcp-table th:nth-child(7),
+.dhcp-table td:nth-child(7) {
+    width: 160px; /* 操作 */
+}
+
+/* 加载状态样式 */
+.loading-spinner {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    border: 3px solid #f0f0f0;
+    border-radius: 50%;
+    border-top-color: #1890ff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 状态标签 */
+.status-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.status-tag.active {
+    background: #f6ffed;
+    color: #52c41a;
+    border: 1px solid #b7eb8f;
+}
+
+.status-tag.expired {
+    background: #fff2f0;
+    color: #ff4d4f;
+    border: 1px solid #ffccc7;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .config-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .config-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    
+    .config-item label {
+        min-width: auto;
+    }
+    
+    .config-item span {
+        margin: 0;
+    }
+    
+    .dhcp-table {
+        font-size: 12px;
+        table-layout: auto;
+    }
+    
+    .dhcp-table th,
+    .dhcp-table td {
+        padding: 8px 12px;
+        width: auto !important;
+        min-width: 80px;
+    }
+}
+
+/* 操作按钮组 */
+.action-buttons {
+    margin-top: 15px;
+    text-align: right;
+}
+
+.action-buttons .btn {
+    margin-left: 8px;
+}
+
+/* 消息提示样式 */
+.message {
+    padding: 15px 20px;
+    border-radius: 6px;
+    margin: 15px 0;
+    font-weight: normal;
+}
+
+.message.success {
+    background: #f6ffed;
+    color: #52c41a;
+    border: 1px solid #b7eb8f;
+}
+
+.message.error {
+    background: #fff2f0;
+    color: #ff4d4f;
+    border: 1px solid #ffccc7;
+}
+
+.message.info {
+    background: #e6f7ff;
+    color: #1890ff;
+    border: 1px solid #91d5ff;
 }

@@ -32,12 +32,12 @@ class DHCPManager {
             const [config, leases, reservations] = await Promise.all([
                 this.loadDHCPConfig(),
                 this.loadDHCPLeases(),
-                this.loadDHCPReservations()
+                // this.loadDHCPReservations()
             ]);
 
             this.renderDHCPConfig(config);
             this.renderDHCPLeases(leases);
-            this.renderDHCPReservations(reservations);
+            // this.renderDHCPReservations(reservations);
         } catch (error) {
             console.error('加载DHCP数据出错:', error);
         }
@@ -85,7 +85,6 @@ class DHCPManager {
 
         container.innerHTML = `
             <div class="config-section">
-                <h4>DHCP服务器配置</h4>
                 <div class="config-grid">
                     <div class="config-item">
                         <label>DHCP状态:</label>
@@ -168,7 +167,7 @@ class DHCPManager {
                         <td>${lease.mac || 'N/A'}</td>
                         <td>${lease.hostname || 'N/A'}</td>
                         <td>
-                            <span class="status ${lease.status === 'active' ? 'status-active' : 'status-expired'}">
+                            <span class="status-tag ${lease.status === 'active' ? 'active' : 'expired'}">
                                 ${lease.status === 'active' ? '活跃' : '已过期'}
                             </span>
                         </td>
@@ -189,13 +188,12 @@ class DHCPManager {
 
         container.innerHTML = `
             <div class="leases-section">
-                <div class="section-header">
-                    <h4>DHCP租约</h4>
+                <div class="action-buttons">
                     <button class="btn btn-secondary" onclick="dhcpManager.clearExpiredLeases()">
                         清理过期租约
                     </button>
                 </div>
-                <table class="table">
+                <table class="dhcp-table">
                     <thead>
                         <tr>
                             <th>IP地址</th>

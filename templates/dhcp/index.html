@@ -3,24 +3,40 @@
     {{template "header" .}}
     
     <!-- 认证检查提示 -->
-    <div id="auth-check" style="display: block; text-align: center; padding: 20px;">
-        <p>正在验证身份...</p>
+    <div id="auth-check" style="display: block; text-align: center; padding: 40px; background: white; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <div class="loading-spinner"></div>
+        <p style="margin-top: 15px; color: #666; font-size: 14px;">正在验证身份...</p>
     </div>
     
     <!-- 未认证提示 -->
-    <div id="unauthorized" style="display: none; text-align: center; padding: 20px; color: red;">
-        <p>未登录或登录已过期，正在跳转到登录页面...</p>
+    <div id="unauthorized" style="display: none; text-align: center; padding: 20px; background: #fff2f0; border: 1px solid #ffccc7; border-radius: 6px; margin: 20px 0;">
+        <p style="color: #ff4d4f; margin: 0;">未登录或登录已过期，正在跳转到登录页面...</p>
     </div>
     
     <!-- 页面内容 -->
     <div id="page-content" style="display: none;">
-        <div class="content">
-            <h2>DHCP服务器</h2>
-            <div class="card">
-                <h3>DHCP配置</h3>
+        <!-- 页面标题 -->
+        <div class="page-header">
+            <h1>DHCP服务器</h1>
+            <p class="page-desc">动态主机配置协议服务管理</p>
+        </div>
+        
+        <!-- 配置区域 -->
+        <div class="config-panel">
+            <div class="panel-header">
+                <h2>服务配置</h2>
+            </div>
+            <div class="panel-body">
                 <div id="dhcpConfig"></div>
             </div>
-            <div class="card">
+        </div>
+        
+        <!-- 租约管理区域 -->
+        <div class="leases-panel">
+            <div class="panel-header">
+                <h2>租约管理</h2>
+            </div>
+            <div class="panel-body">
                 <div id="dhcpLeases"></div>
             </div>
         </div>
