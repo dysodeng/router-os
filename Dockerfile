@@ -1,11 +1,11 @@
 # 多阶段构建
-FROM golang:1.21-alpine AS builder
+FROM registry.huaxisy.com/library/golang:1.24.2 AS builder
 
 # 设置工作目录
 WORKDIR /app
 
-# 安装必要的包
-RUN apk add --no-cache git
+# 安装必要的包，包括CGO和SQLite支持
+RUN apt-get update && apt-get install -y git gcc libc6-dev libsqlite3-dev && rm -rf /var/lib/apt/lists/*
 
 # 复制go mod文件
 COPY go.mod go.sum ./
@@ -16,11 +16,11 @@ RUN go mod download
 # 复制源代码
 COPY . .
 
-# 构建应用
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o router-os ./cmd/router
+# 构建应用，启用CGO以支持SQLite
+RUN CGO_ENABLED=1 GOOS=linux go build -a -o router-os ./cmd/router
 
 # 运行阶段
-FROM alpine:latest
+FROM registry.huaxisy.com/library/alpine:3.21
 
 # 安装必要的包
 RUN apk --no-cache add ca-certificates iptables iproute2

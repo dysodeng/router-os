@@ -31,6 +31,77 @@ func NewIptablesManager() *IptablesManager {
 	return &IptablesManager{}
 }
 
+// CheckMasqueradeRuleExists 检查MASQUERADE规则是否已存在
+// 检查指定的MASQUERADE规则是否已经在iptables中存在
+//
+// 参数：
+//   - wanInterface: WAN接口名称
+//   - lanNetwork: LAN网络地址
+//
+// 返回值：
+//   - bool: 规则是否存在
+//   - error: 检查失败时返回错误信息
+func (im *IptablesManager) CheckMasqueradeRuleExists(wanInterface string, lanNetwork string) (bool, error) {
+	// 使用 -C 参数检查规则是否存在
+	cmd := exec.Command("iptables", "-t", "nat", "-C", "POSTROUTING",
+		"-s", lanNetwork, "-o", wanInterface, "-j", "MASQUERADE")
+
+	err := cmd.Run()
+	if err != nil {
+		// 如果规则不存在，iptables -C 会返回错误
+		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+			return false, nil // 规则不存在
+		}
+		return false, fmt.Errorf("检查MASQUERADE规则失败: %v", err)
+	}
+
+	return true, nil // 规则存在
+}
+
+// CheckForwardRuleExists 检查转发规则是否已存在
+// 检查指定的转发规则是否已经在iptables中存在
+//
+// 参数：
+//   - fromInterface: 源接口名称
+//   - toInterface: 目标接口名称
+//
+// 返回值：
+//   - bool: 规则是否存在（两条规则都存在才返回true）
+//   - error: 检查失败时返回错误信息
+func (im *IptablesManager) CheckForwardRuleExists(fromInterface, toInterface string) (bool, error) {
+	// 检查正向转发规则
+	cmd1 := exec.Command("iptables", "-C", "FORWARD",
+		"-i", fromInterface, "-o", toInterface, "-j", "ACCEPT")
+
+	err1 := cmd1.Run()
+	forwardExists := true
+	if err1 != nil {
+		if exitError, ok := err1.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+			forwardExists = false
+		} else {
+			return false, fmt.Errorf("检查正向转发规则失败: %v", err1)
+		}
+	}
+
+	// 检查反向转发规则
+	cmd2 := exec.Command("iptables", "-C", "FORWARD",
+		"-i", toInterface, "-o", fromInterface,
+		"-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT")
+
+	err2 := cmd2.Run()
+	backwardExists := true
+	if err2 != nil {
+		if exitError, ok := err2.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+			backwardExists = false
+		} else {
+			return false, fmt.Errorf("检查反向转发规则失败: %v", err2)
+		}
+	}
+
+	// 只有两条规则都存在才认为转发规则存在
+	return forwardExists && backwardExists, nil
+}
+
 // AddMasqueradeRule 添加MASQUERADE规则
 // 为指定的WAN接口添加源地址转换规则，允许内网设备通过WAN接口访问外网
 //
@@ -52,6 +123,17 @@ func NewIptablesManager() *IptablesManager {
 //	    log.Printf("添加MASQUERADE规则失败: %v", err)
 //	}
 func (im *IptablesManager) AddMasqueradeRule(wanInterface string, lanNetwork string) error {
+	// 先检查规则是否已存在
+	exists, err := im.CheckMasqueradeRuleExists(wanInterface, lanNetwork)
+	if err != nil {
+		return fmt.Errorf("检查MASQUERADE规则失败: %v", err)
+	}
+
+	if exists {
+		log.Printf("MASQUERADE规则已存在，跳过添加: %s -> %s", lanNetwork, wanInterface)
+		return nil
+	}
+
 	// 构建iptables命令
 	cmd := exec.Command("iptables", "-t", "nat", "-A", "POSTROUTING",
 		"-s", lanNetwork, "-o", wanInterface, "-j", "MASQUERADE")
@@ -106,6 +188,17 @@ func (im *IptablesManager) RemoveMasqueradeRule(wanInterface string, lanNetwork 
 //	iptables -A FORWARD -i <fromInterface> -o <toInterface> -j ACCEPT
 //	iptables -A FORWARD -i <toInterface> -o <fromInterface> -m state --state ESTABLISHED,RELATED -j ACCEPT
 func (im *IptablesManager) AddForwardRule(fromInterface, toInterface string) error {
+	// 先检查规则是否已存在
+	exists, err := im.CheckForwardRuleExists(fromInterface, toInterface)
+	if err != nil {
+		return fmt.Errorf("检查转发规则失败: %v", err)
+	}
+
+	if exists {
+		log.Printf("转发规则已存在，跳过添加: %s <-> %s", fromInterface, toInterface)
+		return nil
+	}
+
 	// 添加正向转发规则
 	cmd1 := exec.Command("iptables", "-A", "FORWARD",
 		"-i", fromInterface, "-o", toInterface, "-j", "ACCEPT")

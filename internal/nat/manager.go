@@ -64,6 +64,12 @@ type NATBackend interface {
 	// RemoveForwardRule 移除转发规则
 	RemoveForwardRule(fromInterface, toInterface string) error
 
+	// CheckMasqueradeRuleExists 检查MASQUERADE规则是否存在
+	CheckMasqueradeRuleExists(wanInterface string, lanNetwork string) (bool, error)
+
+	// CheckForwardRuleExists 检查转发规则是否存在
+	CheckForwardRuleExists(fromInterface, toInterface string) (bool, error)
+
 	// EnableIPForwarding 启用IP转发
 	EnableIPForwarding() error
 
@@ -164,6 +170,87 @@ func NewManager(backend NATBackend, interfaceManager *interfaces.Manager) *Manag
 	}
 }
 
+// syncExistingRules 同步现有的iptables规则到内存状态
+// 在系统重启后，iptables规则可能已经存在，但内存状态为空
+// 此方法扫描现有的WAN/LAN接口组合，检查对应的规则是否存在，并同步到内存
+func (m *Manager) syncExistingRules() error {
+	log.Println("开始同步现有的NAT规则到内存状态...")
+
+	// 获取WAN和LAN接口
+	wanInterfaces := m.interfaceManager.GetWANInterfaces()
+	lanInterfaces := m.interfaceManager.GetLANInterfaces()
+
+	syncedCount := 0
+
+	// 检查并同步MASQUERADE规则
+	for _, wanIface := range wanInterfaces {
+		for _, lanIface := range lanInterfaces {
+			if lanIface.IPAddress != nil && lanIface.Netmask != nil {
+				// 计算LAN网络地址
+				lanNetwork := m.calculateNetworkAddress(lanIface.IPAddress, lanIface.Netmask)
+
+				// 检查MASQUERADE规则是否存在
+				exists, err := m.backend.CheckMasqueradeRuleExists(wanIface.Name, lanNetwork)
+				if err != nil {
+					log.Printf("检查MASQUERADE规则失败: %v", err)
+					continue
+				}
+
+				if exists {
+					// 规则存在，添加到内存状态
+					ruleID := fmt.Sprintf("masq_%s_%s", wanIface.Name, strings.ReplaceAll(lanNetwork, "/", "_"))
+					if _, exists := m.rules[ruleID]; !exists {
+						rule := &NATRule{
+							ID:           ruleID,
+							Type:         "MASQUERADE",
+							WanInterface: wanIface.Name,
+							LanNetwork:   lanNetwork,
+							CreatedAt:    time.Now(),
+							Active:       true,
+						}
+						m.rules[ruleID] = rule
+						syncedCount++
+						log.Printf("同步MASQUERADE规则到内存: %s -> %s", lanNetwork, wanIface.Name)
+					}
+				}
+			}
+		}
+	}
+
+	// 检查并同步转发规则
+	for _, lanIface := range lanInterfaces {
+		for _, wanIface := range wanInterfaces {
+			// 检查转发规则是否存在
+			exists, err := m.backend.CheckForwardRuleExists(lanIface.Name, wanIface.Name)
+			if err != nil {
+				log.Printf("检查转发规则失败: %v", err)
+				continue
+			}
+
+			if exists {
+				// 规则存在，添加到内存状态
+				ruleID := fmt.Sprintf("forward_%s_%s", lanIface.Name, wanIface.Name)
+				if _, exists := m.rules[ruleID]; !exists {
+					rule := &NATRule{
+						ID:            ruleID,
+						Type:          "FORWARD",
+						FromInterface: lanIface.Name,
+						ToInterface:   wanIface.Name,
+						CreatedAt:     time.Now(),
+						Active:        true,
+					}
+					m.rules[ruleID] = rule
+					syncedCount++
+					log.Printf("同步转发规则到内存: %s -> %s", lanIface.Name, wanIface.Name)
+				}
+			}
+		}
+	}
+
+	log.Printf("NAT规则同步完成，共同步 %d 条规则", syncedCount)
+	return nil
+}
+
 // Start 启动NAT管理器
 // 初始化NAT管理器并开始自动配置
 //
@@ -180,6 +267,12 @@ func (m *Manager) Start() error {
 	// 启用IP转发
 	if err := m.backend.EnableIPForwarding(); err != nil {
 		return fmt.Errorf("启用IP转发失败: %v", err)
+	}
+
+	// 同步现有的iptables规则到内存状态
+	// 这样可以避免重复添加已存在的规则
+	if err := m.syncExistingRules(); err != nil {
+		log.Printf("同步现有规则失败: %v", err)
 	}
 
 	// 如果启用自动配置，则自动配置NAT规则
