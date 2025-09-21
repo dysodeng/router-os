@@ -34,7 +34,7 @@ body {
 }
 
 .container { 
-    max-width: 1350px;
+    max-width: 1400px;
     margin: 0 auto; 
     padding: 20px; 
 }
@@ -319,7 +319,7 @@ body {
     color: #333;
     margin-bottom: 0;
     font-size: 14px;
-    min-width: 100px;
+    min-width: 65px;
 }
 
 .config-item span {
@@ -609,4 +609,74 @@ body {
     background: #e6f7ff;
     color: #1890ff;
     border: 1px solid #91d5ff;
+}
+
+/* 弹框样式 */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    padding: 20px 25px 15px;
+    border-bottom: 1px solid #e8e8e8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.modal-header .close {
+    font-size: 24px;
+    font-weight: bold;
+    color: #999;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    background: none;
+    border: none;
+}
+
+.modal-header .close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px 25px;
+}
+
+/* 操作按钮区域样式 */
+.operation-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.operation-buttons .btn {
+    flex: 1;
+    min-width: 120px;
 }

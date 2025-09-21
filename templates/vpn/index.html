@@ -15,26 +15,26 @@
     <!-- 页面内容 -->
     <div id="page-content" style="display: none;">
         <div class="content">
-            <h2>VPN服务器</h2>
-            <div class="card">
-                <h3>VPN配置</h3>
-                <div id="vpnConfig"></div>
+            <div class="page-header">
+                <h1>VPN服务器</h1>
+                <p>配置和管理虚拟专用网络服务</p>
             </div>
             <div class="card">
                 <h3>连接的客户端</h3>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>客户端ID</th>
-                            <th>IP地址</th>
-                            <th>连接时间</th>
-                            <th>传输数据</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="vpnClientsList">
-                    </tbody>
-                </table>
+                <div id="vpnClients"></div>
+            </div>
+            
+            <!-- VPN配置弹框 -->
+            <div id="configModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>VPN服务配置</h3>
+                        <span class="close" id="closeConfigModal">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div id="vpnConfig"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

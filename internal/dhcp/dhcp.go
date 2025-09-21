@@ -498,7 +498,7 @@ func (s *Server) handleRequest(msg *Message, clientAddr *net.UDPAddr) {
 	// Validate and create lease
 	if s.validateRequest(msg.Chaddr, requestedIP) {
 		fmt.Printf("Request validation successful, creating lease\n")
-		lease := s.createLease(msg.Chaddr, requestedIP)
+		lease := s.createLease(msg.Chaddr, requestedIP, msg)
 		ack := s.createACK(msg, lease)
 		err := s.sendDHCPMessage(ack, clientAddr)
 		if err != nil {
@@ -650,13 +650,20 @@ func (s *Server) isIPInPool(ip net.IP) bool {
 }
 
 // createLease creates a new lease
-func (s *Server) createLease(mac net.HardwareAddr, ip net.IP) *Lease {
+func (s *Server) createLease(mac net.HardwareAddr, ip net.IP, msg *Message) *Lease {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// 从DHCP消息中提取主机名
+	hostname := ""
+	if hostnameData, exists := msg.Options[OptionHostName]; exists && len(hostnameData) > 0 {
+		hostname = string(hostnameData)
+	}
 
 	lease := &Lease{
 		IP:        ip,
 		MAC:       mac,
+		Hostname:  hostname,
 		StartTime: time.Now(),
 		Duration:  s.leaseTime,
 		State:     "BOUND",

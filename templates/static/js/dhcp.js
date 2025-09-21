@@ -3,12 +3,12 @@
 class DHCPManager {
     constructor() {
         this.authManager = new AuthManager();
-        this.init();
+        this.init().then(r => {});
     }
 
     async init() {
         // 检查认证状态
-        if (!await this.authManager.checkAuth()) {
+        if (!this.authManager.checkAuth()) {
             return;
         }
 
@@ -32,12 +32,10 @@ class DHCPManager {
             const [config, leases, reservations] = await Promise.all([
                 this.loadDHCPConfig(),
                 this.loadDHCPLeases(),
-                // this.loadDHCPReservations()
             ]);
 
             this.renderDHCPConfig(config);
             this.renderDHCPLeases(leases);
-            // this.renderDHCPReservations(reservations);
         } catch (error) {
             console.error('加载DHCP数据出错:', error);
         }
@@ -63,18 +61,6 @@ class DHCPManager {
             }
         } catch (error) {
             console.error('加载DHCP租约出错:', error);
-        }
-        return {};
-    }
-
-    async loadDHCPReservations() {
-        try {
-            const response = await this.authManager.fetchWithAuth('/api/dhcp/reservations');
-            if (response.ok) {
-                return await response.json();
-            }
-        } catch (error) {
-            console.error('加载DHCP保留出错:', error);
         }
         return {};
     }
@@ -189,6 +175,9 @@ class DHCPManager {
         container.innerHTML = `
             <div class="leases-section">
                 <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="dhcpManager.showConfigModal()">
+                        服务配置
+                    </button>
                     <button class="btn btn-secondary" onclick="dhcpManager.clearExpiredLeases()">
                         清理过期租约
                     </button>
@@ -213,62 +202,38 @@ class DHCPManager {
         `;
     }
 
-    renderDHCPReservations(data) {
-        const container = document.getElementById('dhcpReservations');
-        if (!container) return;
-
-        const reservations = data.reservations || [];
-
-        let reservationsHtml = '';
-        if (reservations.length === 0) {
-            reservationsHtml = '<tr><td colspan="4" class="text-center">暂无IP保留</td></tr>';
-        } else {
-            reservations.forEach(reservation => {
-                reservationsHtml += `
-                    <tr>
-                        <td>${reservation.ip || 'N/A'}</td>
-                        <td>${reservation.mac || 'N/A'}</td>
-                        <td>${reservation.hostname || 'N/A'}</td>
-                        <td>
-                            <button class="btn btn-sm btn-primary" onclick="dhcpManager.editReservation('${reservation.ip}', '${reservation.mac}', '${reservation.hostname}')">
-                                编辑
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="dhcpManager.deleteReservation('${reservation.ip}')">
-                                删除
-                            </button>
-                        </td>
-                    </tr>
-                `;
+    bindEvents() {
+        // 弹框关闭事件
+        const closeModal = document.getElementById('closeConfigModal');
+        if (closeModal) {
+            closeModal.addEventListener('click', () => {
+                this.hideConfigModal();
             });
         }
 
-        container.innerHTML = `
-            <div class="reservations-section">
-                <div class="section-header">
-                    <h4>IP地址保留</h4>
-                    <button class="btn btn-success" onclick="dhcpManager.showAddReservationDialog()">
-                        添加保留
-                    </button>
-                </div>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>IP地址</th>
-                            <th>MAC地址</th>
-                            <th>主机名</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${reservationsHtml}
-                    </tbody>
-                </table>
-            </div>
-        `;
+        // 点击弹框背景关闭
+        const modal = document.getElementById('configModal');
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    this.hideConfigModal();
+                }
+            });
+        }
     }
 
-    bindEvents() {
-        // 这里可以绑定其他事件
+    showConfigModal() {
+        const modal = document.getElementById('configModal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    }
+
+    hideConfigModal() {
+        const modal = document.getElementById('configModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
     }
 
     async toggleDHCP(enable) {
@@ -525,35 +490,6 @@ class DHCPManager {
         } catch (error) {
             console.error('更新IP保留出错:', error);
             this.showMessage('更新保留失败', 'error');
-        }
-    }
-
-    async deleteReservation(ip) {
-        if (!confirm(`确定要删除IP地址 ${ip} 的保留吗？`)) {
-            return;
-        }
-
-        try {
-            const response = await this.authManager.fetchWithAuth('/api/dhcp/reservations', {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    ip: ip
-                })
-            });
-
-            if (response.ok) {
-                await this.loadDHCPData();
-                this.showMessage('IP保留删除成功', 'success');
-            } else {
-                const error = await response.text();
-                this.showMessage(`删除保留失败: ${error}`, 'error');
-            }
-        } catch (error) {
-            console.error('删除IP保留出错:', error);
-            this.showMessage('删除保留失败', 'error');
         }
     }
 

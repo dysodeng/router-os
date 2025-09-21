@@ -15,29 +15,33 @@
     
     <!-- 页面内容 -->
     <div id="page-content" style="display: none;">
-        <!-- 页面标题 -->
-        <div class="page-header">
-            <h1>DHCP服务器</h1>
-            <p class="page-desc">动态主机配置协议服务管理</p>
-        </div>
-        
-        <!-- 配置区域 -->
-        <div class="config-panel">
-            <div class="panel-header">
-                <h2>服务配置</h2>
+        <div class="content">
+            <div class="page-header">
+                <h1>DHCP服务器</h1>
+                <p>动态主机配置协议服务管理</p>
             </div>
-            <div class="panel-body">
-                <div id="dhcpConfig"></div>
+            
+            <!-- 租约管理区域 -->
+            <div class="leases-panel">
+                <div class="panel-header">
+                    <h2>租约管理</h2>
+                </div>
+                <div class="panel-body">
+                    <div id="dhcpLeases"></div>
+                </div>
             </div>
-        </div>
-        
-        <!-- 租约管理区域 -->
-        <div class="leases-panel">
-            <div class="panel-header">
-                <h2>租约管理</h2>
-            </div>
-            <div class="panel-body">
-                <div id="dhcpLeases"></div>
+            
+            <!-- 服务配置弹框 -->
+            <div id="configModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>DHCP服务配置</h3>
+                        <span class="close" id="closeConfigModal">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div id="dhcpConfig"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

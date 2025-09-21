@@ -62,7 +62,7 @@ class VPNManager {
         } catch (error) {
             console.error('加载VPN客户端出错:', error);
         }
-        return {};
+        return { clients: [] };
     }
 
     renderVPNConfig(config) {
@@ -129,7 +129,8 @@ class VPNManager {
         const container = document.getElementById('vpnClients');
         if (!container) return;
 
-        const clients = data.clients || [];
+        // 确保data不为null且有clients属性
+        const clients = (data && data.clients) ? data.clients : [];
 
         let clientsHtml = '';
         if (clients.length === 0) {
@@ -162,8 +163,10 @@ class VPNManager {
 
         container.innerHTML = `
             <div class="clients-section">
-                <div class="section-header">
-                    <h4>VPN客户端</h4>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="vpnManager.showConfigModal()">
+                        VPN配置
+                    </button>
                     <button class="btn btn-success" onclick="vpnManager.showAddClientDialog()">
                         添加客户端
                     </button>
@@ -189,7 +192,37 @@ class VPNManager {
     }
 
     bindEvents() {
-        // 这里可以绑定其他事件
+        // 弹框关闭事件
+        const closeModal = document.getElementById('closeConfigModal');
+        if (closeModal) {
+            closeModal.addEventListener('click', () => {
+                this.hideConfigModal();
+            });
+        }
+
+        // 点击弹框背景关闭
+        const modal = document.getElementById('configModal');
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    this.hideConfigModal();
+                }
+            });
+        }
+    }
+
+    showConfigModal() {
+        const modal = document.getElementById('configModal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    }
+
+    hideConfigModal() {
+        const modal = document.getElementById('configModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
     }
 
     async toggleVPN(enable) {
