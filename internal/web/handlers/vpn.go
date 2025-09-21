@@ -44,7 +44,7 @@ func (h *VPNHandler) HandleVPNConfig(w http.ResponseWriter, r *http.Request) {
 		"protocol": "udp",
 	}
 
-	json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(config)
 }
 
 // HandleVPNClients 处理VPN客户端
@@ -54,15 +54,15 @@ func (h *VPNHandler) HandleVPNClients(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		// 获取VPN客户端列表
-		clients := []interface{}{}
-		json.NewEncoder(w).Encode(clients)
+		var clients []interface{}
+		_ = json.NewEncoder(w).Encode(clients)
 	case "POST":
 		// 添加VPN客户端
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	case "DELETE":
 		// 删除VPN客户端
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	default:
 		http.Error(w, "方法不允许", http.StatusMethodNotAllowed)
 	}
