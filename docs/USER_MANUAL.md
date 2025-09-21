@@ -3,15 +3,21 @@
 ## 📋 目录
 
 1. [安装和启动](#安装和启动)
-2. [配置文件详解](#配置文件详解)
-3. [CLI 命令参考](#cli-命令参考)
-4. [路由管理](#路由管理)
-5. [接口管理](#接口管理)
-6. [协议配置](#协议配置)
-7. [监控和诊断](#监控和诊断)
-8. [常用操作示例](#常用操作示例)
-9. [配置模板](#配置模板)
-10. [命令速查表](#命令速查表)
+2. [Web管理界面](#web管理界面)
+3. [配置文件详解](#配置文件详解)
+4. [CLI 命令参考](#cli-命令参考)
+5. [路由管理](#路由管理)
+6. [接口管理](#接口管理)
+7. [协议配置](#协议配置)
+8. [防火墙管理](#防火墙管理)
+9. [DHCP服务器](#dhcp服务器)
+10. [VPN服务器](#vpn服务器)
+11. [QoS流量控制](#qos流量控制)
+12. [数据包捕获](#数据包捕获)
+13. [监控和诊断](#监控和诊断)
+14. [常用操作示例](#常用操作示例)
+15. [配置模板](#配置模板)
+16. [命令速查表](#命令速查表)
 
 ---
 
@@ -54,6 +60,210 @@ go run main.go
 
 # 后台运行
 nohup ./router-os > router.log 2>&1 &
+```
+
+---
+
+## 🌐 Web管理界面
+
+### 访问Web界面
+
+启动路由器后，可以通过Web浏览器访问管理界面：
+
+```
+http://localhost:8080
+```
+
+### 认证登录
+
+Web界面使用基本认证（Basic Authentication）：
+
+- **默认用户名**: `admin`
+- **默认密码**: `admin123`
+
+> ⚠️ **安全提示**: 首次使用时请立即修改默认密码！
+
+### 主要功能模块
+
+#### 1. 仪表板 (Dashboard)
+
+- **系统概览**: 显示系统运行状态、运行时间、内存使用等
+- **接口状态**: 实时显示所有网络接口的状态和统计信息
+- **路由统计**: 显示路由表大小、路由类型分布
+- **流量监控**: 实时显示网络流量图表
+
+访问地址: `http://localhost:8080/dashboard`
+
+#### 2. 路由管理
+
+- **路由表查看**: 查看所有路由条目
+- **静态路由管理**: 添加、编辑、删除静态路由
+- **动态路由监控**: 查看RIP等协议学习的路由
+- **路由策略配置**: 配置路由过滤和策略
+
+访问地址: `http://localhost:8080/routes`
+
+**操作示例**:
+```bash
+# 添加静态路由
+POST /api/routes
+{
+  "destination": "192.168.2.0/24",
+  "gateway": "192.168.1.2",
+  "interface": "eth0",
+  "metric": 1
+}
+
+# 删除路由
+DELETE /api/routes/192.168.2.0%2F24
+```
+
+#### 3. 接口管理
+
+- **接口配置**: 配置IP地址、子网掩码、MTU等
+- **接口状态**: 启用/禁用接口
+- **统计信息**: 查看接口流量统计
+- **接口监控**: 实时监控接口状态变化
+
+访问地址: `http://localhost:8080/interfaces`
+
+#### 4. 防火墙管理
+
+- **规则管理**: 添加、编辑、删除防火墙规则
+- **访问控制**: 配置允许/拒绝规则
+- **端口管理**: 配置端口转发和映射
+- **安全策略**: 配置安全策略和访问控制列表
+
+访问地址: `http://localhost:8080/firewall`
+
+#### 5. DHCP服务器
+
+- **DHCP配置**: 配置IP地址池、租约时间
+- **客户端管理**: 查看和管理DHCP客户端
+- **静态绑定**: 配置MAC地址和IP地址的静态绑定
+- **租约监控**: 监控DHCP租约状态
+
+访问地址: `http://localhost:8080/dhcp`
+
+#### 6. VPN服务器
+
+- **VPN配置**: 配置VPN服务器参数
+- **客户端管理**: 管理VPN客户端连接
+- **隧道监控**: 监控VPN隧道状态
+- **认证管理**: 配置VPN用户认证
+
+访问地址: `http://localhost:8080/vpn`
+
+#### 7. QoS流量控制
+
+- **带宽管理**: 配置接口带宽限制
+- **流量优先级**: 设置不同类型流量的优先级
+- **队列管理**: 配置流量队列和调度策略
+- **流量统计**: 查看QoS流量统计信息
+
+访问地址: `http://localhost:8080/qos`
+
+#### 8. 系统监控
+
+- **性能监控**: CPU、内存、网络使用率
+- **日志查看**: 查看系统日志和事件
+- **告警管理**: 配置和查看系统告警
+- **统计报表**: 生成各种统计报表
+
+访问地址: `http://localhost:8080/monitor`
+
+### API接口使用
+
+Web界面提供RESTful API，支持程序化管理：
+
+#### 认证方式
+
+```bash
+# 使用Basic Authentication
+curl -u admin:admin http://localhost:8080/api/routes
+```
+
+#### 常用API端点
+
+| 功能 | 方法 | 端点 | 描述 |
+|------|------|------|------|
+| 路由管理 | GET | `/api/routes` | 获取所有路由 |
+| 路由管理 | POST | `/api/routes` | 添加路由 |
+| 路由管理 | DELETE | `/api/routes/{id}` | 删除路由 |
+| 接口管理 | GET | `/api/interfaces` | 获取所有接口 |
+| 接口管理 | PUT | `/api/interfaces/{name}` | 更新接口配置 |
+| 防火墙 | GET | `/api/firewall/rules` | 获取防火墙规则 |
+| 防火墙 | POST | `/api/firewall/rules` | 添加防火墙规则 |
+| DHCP | GET | `/api/dhcp/leases` | 获取DHCP租约 |
+| 系统监控 | GET | `/api/monitor/stats` | 获取系统统计 |
+
+### 配置Web服务器
+
+在配置文件中添加Web服务器配置：
+
+```json
+{
+  "web": {
+    "enabled": true,
+    "port": 8080,
+    "host": "0.0.0.0",
+    "auth": {
+      "username": "admin",
+      "password": "admin"
+    },
+    "cors": {
+      "enabled": true,
+      "origins": ["*"]
+    },
+    "tls": {
+      "enabled": false,
+      "cert_file": "",
+      "key_file": ""
+    }
+  }
+}
+```
+
+### 安全配置
+
+#### 1. 修改默认密码
+
+```json
+{
+  "web": {
+    "auth": {
+      "username": "admin",
+      "password": "your_secure_password"
+    }
+  }
+}
+```
+
+#### 2. 启用HTTPS
+
+```json
+{
+  "web": {
+    "tls": {
+      "enabled": true,
+      "cert_file": "/path/to/cert.pem",
+      "key_file": "/path/to/key.pem"
+    }
+  }
+}
+```
+
+#### 3. 限制访问来源
+
+```json
+{
+  "web": {
+    "host": "192.168.1.1",  // 只监听特定IP
+    "cors": {
+      "origins": ["https://admin.example.com"]  // 限制CORS来源
+    }
+  }
+}
 ```
 
 ---
@@ -494,6 +704,378 @@ show interfaces
 
 # 启用 RIP 调试
 debug rip enable
+```
+
+---
+
+## 🔥 防火墙管理
+
+### 防火墙规则类型
+
+1. **ACCEPT**: 允许数据包通过
+2. **DROP**: 静默丢弃数据包
+3. **REJECT**: 拒绝数据包并发送响应
+
+### 防火墙配置
+
+#### 配置文件设置
+
+```json
+{
+  "firewall": {
+    "enabled": true,
+    "default_policy": "DROP",
+    "rules": [
+      {
+        "id": "allow_ssh",
+        "action": "ACCEPT",
+        "protocol": "tcp",
+        "src_ip": "192.168.1.0/24",
+        "dst_port": 22,
+        "description": "Allow SSH from LAN"
+      },
+      {
+        "id": "allow_web",
+        "action": "ACCEPT",
+        "protocol": "tcp",
+        "dst_port": 80,
+        "description": "Allow HTTP traffic"
+      }
+    ]
+  }
+}
+```
+
+#### CLI命令
+
+```bash
+# 查看防火墙状态
+show firewall status
+
+# 查看防火墙规则
+show firewall rules
+
+# 添加防火墙规则
+firewall add rule allow_http tcp --dst-port 80 --action ACCEPT
+
+# 删除防火墙规则
+firewall del rule allow_http
+
+# 启用/禁用防火墙
+firewall enable
+firewall disable
+```
+
+### 常用防火墙规则
+
+```bash
+# 允许SSH访问
+firewall add rule ssh tcp --src 192.168.1.0/24 --dst-port 22 --action ACCEPT
+
+# 允许Web访问
+firewall add rule web tcp --dst-port 80,443 --action ACCEPT
+
+# 阻止特定IP
+firewall add rule block_ip any --src 192.168.1.100 --action DROP
+
+# 允许ping
+firewall add rule ping icmp --action ACCEPT
+```
+
+---
+
+## 🏠 DHCP服务器
+
+### DHCP服务器配置
+
+#### 配置文件设置
+
+```json
+{
+  "dhcp": {
+    "enabled": true,
+    "interface": "eth0",
+    "pool": {
+      "start": "192.168.1.100",
+      "end": "192.168.1.200",
+      "subnet": "192.168.1.0/24",
+      "gateway": "192.168.1.1",
+      "dns": ["8.8.8.8", "8.8.4.4"],
+      "lease_time": 86400
+    },
+    "static_leases": [
+      {
+        "mac": "00:11:22:33:44:55",
+        "ip": "192.168.1.10",
+        "hostname": "server1"
+      }
+    ]
+  }
+}
+```
+
+#### CLI命令
+
+```bash
+# 查看DHCP状态
+show dhcp status
+
+# 查看DHCP租约
+show dhcp leases
+
+# 查看DHCP统计
+show dhcp stats
+
+# 启用/禁用DHCP服务器
+dhcp enable
+dhcp disable
+
+# 添加静态租约
+dhcp add static 00:11:22:33:44:55 192.168.1.10 server1
+
+# 删除静态租约
+dhcp del static 00:11:22:33:44:55
+```
+
+### DHCP故障排除
+
+```bash
+# 检查DHCP服务状态
+show dhcp status
+
+# 查看DHCP日志
+show logs dhcp
+
+# 检查IP地址池
+show dhcp pool
+
+# 释放特定租约
+dhcp release 192.168.1.150
+```
+
+---
+
+## 🔐 VPN服务器
+
+### VPN服务器配置
+
+#### 配置文件设置
+
+```json
+{
+  "vpn": {
+    "enabled": true,
+    "type": "openvpn",
+    "port": 1194,
+    "protocol": "udp",
+    "network": "10.8.0.0/24",
+    "clients": [
+      {
+        "name": "client1",
+        "cert": "/path/to/client1.crt",
+        "key": "/path/to/client1.key"
+      }
+    ],
+    "routes": [
+      "192.168.1.0/24"
+    ]
+  }
+}
+```
+
+#### CLI命令
+
+```bash
+# 查看VPN状态
+show vpn status
+
+# 查看VPN客户端
+show vpn clients
+
+# 查看VPN连接
+show vpn connections
+
+# 启用/禁用VPN服务器
+vpn enable
+vpn disable
+
+# 添加VPN客户端
+vpn add client client1 --cert /path/to/cert --key /path/to/key
+
+# 删除VPN客户端
+vpn del client client1
+
+# 断开客户端连接
+vpn disconnect client1
+```
+
+### VPN客户端管理
+
+```bash
+# 生成客户端证书
+vpn generate cert client2
+
+# 查看客户端配置
+vpn show config client1
+
+# 导出客户端配置
+vpn export config client1 > client1.ovpn
+```
+
+---
+
+## ⚡ QoS流量控制
+
+### QoS配置
+
+#### 配置文件设置
+
+```json
+{
+  "qos": {
+    "enabled": true,
+    "interfaces": [
+      {
+        "name": "eth0",
+        "upload_limit": "100Mbps",
+        "download_limit": "100Mbps",
+        "queues": [
+          {
+            "name": "high_priority",
+            "bandwidth": "50%",
+            "priority": 1,
+            "rules": [
+              {
+                "protocol": "tcp",
+                "dst_port": 22
+              }
+            ]
+          },
+          {
+            "name": "normal",
+            "bandwidth": "30%",
+            "priority": 2
+          },
+          {
+            "name": "low_priority",
+            "bandwidth": "20%",
+            "priority": 3
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### CLI命令
+
+```bash
+# 查看QoS状态
+show qos status
+
+# 查看QoS统计
+show qos stats
+
+# 查看队列信息
+show qos queues
+
+# 启用/禁用QoS
+qos enable
+qos disable
+
+# 设置接口带宽限制
+qos set interface eth0 upload 100Mbps download 100Mbps
+
+# 添加QoS规则
+qos add rule high_priority tcp --dst-port 22 --bandwidth 50%
+
+# 删除QoS规则
+qos del rule high_priority
+```
+
+### 流量优先级设置
+
+```bash
+# 高优先级：SSH、DNS
+qos add rule ssh tcp --dst-port 22 --priority 1
+qos add rule dns udp --dst-port 53 --priority 1
+
+# 中优先级：HTTP、HTTPS
+qos add rule web tcp --dst-port 80,443 --priority 2
+
+# 低优先级：P2P、下载
+qos add rule p2p tcp --dst-port 6881:6889 --priority 3
+```
+
+---
+
+## 📦 数据包捕获
+
+### 数据包捕获配置
+
+#### 配置文件设置
+
+```json
+{
+  "capture": {
+    "enabled": true,
+    "interfaces": ["eth0", "eth1"],
+    "filters": [
+      {
+        "name": "web_traffic",
+        "filter": "tcp port 80 or tcp port 443",
+        "max_packets": 1000
+      }
+    ],
+    "storage": {
+      "path": "/var/log/captures",
+      "max_size": "100MB",
+      "rotation": true
+    }
+  }
+}
+```
+
+#### CLI命令
+
+```bash
+# 查看捕获状态
+show capture status
+
+# 查看捕获统计
+show capture stats
+
+# 开始数据包捕获
+capture start eth0
+
+# 停止数据包捕获
+capture stop eth0
+
+# 查看捕获的数据包
+capture show eth0
+
+# 设置捕获过滤器
+capture filter eth0 "tcp port 80"
+
+# 导出捕获数据
+capture export eth0 /path/to/file.pcap
+```
+
+### 数据包分析
+
+```bash
+# 按协议统计
+capture stats protocol
+
+# 按端口统计
+capture stats port
+
+# 按IP地址统计
+capture stats ip
+
+# 查看流量趋势
+capture stats trend
 ```
 
 ---

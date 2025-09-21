@@ -7,7 +7,11 @@
 4. [路由协议](#路由协议)
 5. [数据包转发过程](#数据包转发过程)
 6. [网络接口管理](#网络接口管理)
-7. [实际应用场景](#实际应用场景)
+7. [防火墙与路由](#防火墙与路由)
+8. [DHCP与路由](#dhcp与路由)
+9. [VPN隧道路由](#vpn隧道路由)
+10. [QoS与路由优先级](#qos与路由优先级)
+11. [实际应用场景](#实际应用场景)
 
 ## 什么是路由
 
@@ -271,6 +275,315 @@ type InterfaceStatus struct {
     MTU         int       // 最大传输单元
     Speed       int       // 接口速度
     LastUpdate  time.Time // 最后更新时间
+}
+```
+
+## 防火墙与路由
+
+### 防火墙对路由的影响
+
+防火墙是网络安全的重要组件，它会影响数据包的路由决策。
+
+#### 1. 路由前过滤（Pre-routing Filter）
+在路由决策之前检查数据包：
+```
+[数据包到达] → [防火墙检查] → [路由查找] → [转发决策]
+```
+
+#### 2. 路由后过滤（Post-routing Filter）
+在路由决策之后检查数据包：
+```
+[路由查找] → [转发决策] → [防火墙检查] → [数据包发送]
+```
+
+### 防火墙规则与路由表的关系
+
+#### 规则优先级
+1. **防火墙规则**: 安全策略优先
+2. **路由表**: 路径选择
+3. **默认动作**: 拒绝或允许
+
+#### 示例配置
+```json
+{
+  "firewall": {
+    "rules": [
+      {
+        "id": "block_internal",
+        "action": "DROP",
+        "src_network": "192.168.1.0/24",
+        "dst_network": "10.0.0.0/8"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "destination": "10.0.0.0/8",
+      "next_hop": "192.168.1.1",
+      "interface": "eth0"
+    }
+  ]
+}
+```
+
+在这个例子中，即使路由表中有到10.0.0.0/8的路由，防火墙规则会阻止192.168.1.0/24网段的流量到达该目标。
+
+## DHCP与路由
+
+### DHCP服务器的路由需求
+
+DHCP服务器需要特殊的路由配置来正确分发IP地址。
+
+#### 1. DHCP中继（DHCP Relay）
+当DHCP服务器和客户端不在同一网段时：
+
+```
+[客户端] → [路由器/中继] → [DHCP服务器]
+   ↓           ↓              ↓
+DHCP请求   添加中继信息    处理请求
+   ↑           ↑              ↑
+DHCP响应   转发响应      发送响应
+```
+
+#### 2. 路由配置示例
+```json
+{
+  "dhcp": {
+    "enabled": true,
+    "interface": "eth0",
+    "pool": {
+      "start": "192.168.1.100",
+      "end": "192.168.1.200",
+      "gateway": "192.168.1.1",
+      "dns": ["8.8.8.8"]
+    }
+  },
+  "routes": [
+    {
+      "destination": "192.168.1.0/24",
+      "interface": "eth0",
+      "type": "connected"
+    }
+  ]
+}
+```
+
+### DHCP选项与路由信息
+
+DHCP可以向客户端分发路由信息：
+
+#### 常用DHCP选项
+- **选项3**: 默认网关
+- **选项6**: DNS服务器
+- **选项121**: 静态路由
+- **选项249**: 微软静态路由
+
+#### 静态路由分发示例
+```json
+{
+  "dhcp_options": {
+    "121": [
+      {
+        "destination": "10.0.0.0/8",
+        "gateway": "192.168.1.10"
+      }
+    ]
+  }
+}
+```
+
+## VPN隧道路由
+
+### VPN隧道的路由原理
+
+VPN创建虚拟的点对点连接，需要特殊的路由处理。
+
+#### 1. 隧道接口路由
+```
+物理网络: 192.168.1.0/24
+隧道网络: 10.0.0.0/24
+
+路由表:
+10.0.0.0/24     tun0    0    connected
+192.168.1.0/24  eth0    0    connected
+0.0.0.0/0       eth0    1    default
+```
+
+#### 2. 分离隧道（Split Tunneling）
+只有特定流量通过VPN：
+
+```json
+{
+  "vpn": {
+    "enabled": true,
+    "interface": "tun0",
+    "routes": [
+      {
+        "destination": "10.0.0.0/8",
+        "interface": "tun0"
+      },
+      {
+        "destination": "172.16.0.0/12",
+        "interface": "tun0"
+      }
+    ]
+  }
+}
+```
+
+#### 3. 全隧道（Full Tunneling）
+所有流量通过VPN：
+
+```bash
+# 备份原默认路由
+ip route add 203.0.113.1/32 via 192.168.1.1
+
+# 添加VPN默认路由
+ip route add 0.0.0.0/1 dev tun0
+ip route add 128.0.0.0/1 dev tun0
+```
+
+### VPN路由策略
+
+#### 基于策略的路由（Policy-based Routing）
+```json
+{
+  "policy_routes": [
+    {
+      "rule": "from 192.168.1.0/24",
+      "table": "vpn_table"
+    },
+    {
+      "rule": "to 10.0.0.0/8",
+      "table": "vpn_table"
+    }
+  ],
+  "route_tables": {
+    "vpn_table": [
+      {
+        "destination": "0.0.0.0/0",
+        "interface": "tun0"
+      }
+    ]
+  }
+}
+```
+
+## QoS与路由优先级
+
+### QoS对路由的影响
+
+服务质量（QoS）可以影响路由决策，确保重要流量获得优先处理。
+
+#### 1. 流量分类
+```go
+type TrafficClass struct {
+    Name        string  // 流量类别名称
+    Priority    int     // 优先级 (0-7)
+    Bandwidth   int     // 保证带宽
+    Protocol    string  // 协议类型
+    Ports       []int   // 端口范围
+}
+```
+
+#### 2. 路由优先级
+不同类型的流量可以使用不同的路由路径：
+
+```json
+{
+  "qos": {
+    "classes": [
+      {
+        "name": "voice",
+        "priority": 7,
+        "bandwidth": "64kbps",
+        "route_table": "high_priority"
+      },
+      {
+        "name": "video",
+        "priority": 5,
+        "bandwidth": "1mbps",
+        "route_table": "medium_priority"
+      }
+    ]
+  }
+}
+```
+
+### 多路径负载均衡
+
+#### ECMP（Equal Cost Multi-Path）
+当有多条相同成本的路径时，可以进行负载均衡：
+
+```json
+{
+  "routes": [
+    {
+      "destination": "10.0.0.0/8",
+      "next_hop": "192.168.1.1",
+      "interface": "eth0",
+      "weight": 1
+    },
+    {
+      "destination": "10.0.0.0/8",
+      "next_hop": "192.168.2.1",
+      "interface": "eth1",
+      "weight": 1
+    }
+  ]
+}
+```
+
+#### 负载均衡算法
+1. **轮询（Round Robin）**: 依次使用每条路径
+2. **加权轮询（Weighted Round Robin）**: 根据权重分配流量
+3. **哈希（Hash）**: 基于源/目标地址哈希选择路径
+4. **最少连接（Least Connections）**: 选择连接数最少的路径
+
+### 流量整形与路由
+
+#### 令牌桶算法
+```go
+type TokenBucket struct {
+    Capacity    int       // 桶容量
+    Tokens      int       // 当前令牌数
+    RefillRate  int       // 令牌补充速率
+    LastRefill  time.Time // 上次补充时间
+}
+
+func (tb *TokenBucket) AllowPacket(size int) bool {
+    tb.refill()
+    if tb.Tokens >= size {
+        tb.Tokens -= size
+        return true
+    }
+    return false
+}
+```
+
+#### 路由与QoS集成
+```json
+{
+  "interfaces": {
+    "eth0": {
+      "qos": {
+        "enabled": true,
+        "bandwidth": "100mbps",
+        "queues": [
+          {
+            "name": "high",
+            "priority": 7,
+            "bandwidth": "30mbps"
+          },
+          {
+            "name": "normal",
+            "priority": 3,
+            "bandwidth": "70mbps"
+          }
+        ]
+      }
+    }
+  }
 }
 ```
 

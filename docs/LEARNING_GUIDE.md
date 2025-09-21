@@ -29,18 +29,33 @@ Router OS 是一个使用 Go 语言实现的教学型路由器操作系统，旨
 - **📦 数据包处理**: 基本的数据包转发逻辑
 - **⚙️ 配置管理**: 灵活的 JSON 配置系统
 - **💻 CLI 界面**: 直观的命令行管理工具
+- **🌐 Web管理界面**: 现代化的Web管理控制台
+- **🔥 防火墙功能**: 数据包过滤和访问控制
+- **🏠 DHCP服务器**: 动态IP地址分配服务
+- **🔐 VPN服务器**: 虚拟专用网络支持
+- **⚡ QoS流量控制**: 带宽管理和流量优先级
+- **📦 数据包捕获**: 网络流量分析和监控
+- **🗄️ 数据库支持**: SQLite数据持久化
 - **📝 日志系统**: 分级日志记录和调试
 - **📈 系统监控**: 实时性能和状态监控
 
 ### 🎓 学习目标
 
 通过本项目，你将学会：
-- 理解路由器的工作原理
+- 理解路由器的工作原理和架构设计
 - 掌握路由表的管理和操作
 - 了解静态路由和动态路由的区别
 - 学习网络接口的管理方法
 - 掌握数据包的转发过程
 - 理解路由协议的实现原理
+- 学习Web管理界面的设计和实现
+- 掌握防火墙规则的配置和管理
+- 了解DHCP服务器的工作原理
+- 学习VPN隧道的建立和管理
+- 理解QoS流量控制的实现机制
+- 掌握网络数据包的捕获和分析
+- 学习数据库在网络设备中的应用
+- 理解现代路由器的完整功能架构
 
 ---
 
@@ -356,7 +371,146 @@ rip show
 rip stop
 ```
 
-### 教程 3: 监控和调试
+### 教程 3: Web管理界面使用
+
+#### 步骤 1: 启用Web服务
+
+在配置文件中添加Web服务配置：
+
+```json
+{
+  "web": {
+    "enabled": true,
+    "port": 8080,
+    "host": "0.0.0.0",
+    "auth": {
+      "username": "admin",
+      "password": "admin"
+    }
+  }
+}
+```
+
+#### 步骤 2: 访问Web界面
+
+```bash
+# 启动路由器
+go run main.go
+
+# 在浏览器中访问
+http://localhost:8080
+```
+
+#### 步骤 3: 使用Web功能
+
+1. **仪表板**: 查看系统概览和实时状态
+2. **路由管理**: 通过Web界面管理路由表
+3. **接口配置**: 配置网络接口参数
+4. **防火墙设置**: 配置防火墙规则
+5. **DHCP管理**: 管理DHCP服务器和租约
+
+### 教程 4: 防火墙配置
+
+#### 步骤 1: 启用防火墙
+
+```json
+{
+  "firewall": {
+    "enabled": true,
+    "default_policy": "DROP",
+    "rules": [
+      {
+        "id": "allow_ssh",
+        "action": "ACCEPT",
+        "protocol": "tcp",
+        "src_ip": "192.168.1.0/24",
+        "dst_port": 22
+      }
+    ]
+  }
+}
+```
+
+#### 步骤 2: 管理防火墙规则
+
+```bash
+# CLI命令
+firewall add rule web tcp --dst-port 80 --action ACCEPT
+firewall del rule web
+show firewall rules
+
+# Web界面操作
+# 访问 http://localhost:8080/firewall
+```
+
+### 教程 5: DHCP服务器配置
+
+#### 步骤 1: 配置DHCP服务
+
+```json
+{
+  "dhcp": {
+    "enabled": true,
+    "interface": "eth0",
+    "pool": {
+      "start": "192.168.1.100",
+      "end": "192.168.1.200",
+      "subnet": "192.168.1.0/24",
+      "gateway": "192.168.1.1",
+      "dns": ["8.8.8.8", "8.8.4.4"],
+      "lease_time": 86400
+    }
+  }
+}
+```
+
+#### 步骤 2: 管理DHCP租约
+
+```bash
+# 查看DHCP状态
+show dhcp status
+
+# 查看租约信息
+show dhcp leases
+
+# 添加静态绑定
+dhcp add static 00:11:22:33:44:55 192.168.1.10 server1
+```
+
+### 教程 6: 数据包捕获和分析
+
+#### 步骤 1: 启用数据包捕获
+
+```json
+{
+  "capture": {
+    "enabled": true,
+    "interfaces": ["eth0", "eth1"],
+    "filters": [
+      {
+        "name": "web_traffic",
+        "filter": "tcp port 80 or tcp port 443"
+      }
+    ]
+  }
+}
+```
+
+#### 步骤 2: 分析网络流量
+
+```bash
+# 开始捕获
+capture start eth0
+
+# 查看统计信息
+capture stats protocol
+capture stats port
+
+# 导出数据
+capture export eth0 /tmp/traffic.pcap
+```
+
+### 教程 7: 监控和调试
 
 #### 查看系统状态
 
@@ -366,6 +520,9 @@ show stats
 
 # 查看详细的接口统计
 show interfaces detail
+
+# 查看数据库状态
+show database status
 ```
 
 #### 日志调试
@@ -376,6 +533,13 @@ show interfaces detail
 // 在代码中设置日志级别
 logger.SetLevel(logger.DEBUG)
 ```
+
+#### Web界面监控
+
+访问监控页面查看实时数据：
+- 系统性能监控: `http://localhost:8080/monitor`
+- 网络流量图表: `http://localhost:8080/dashboard`
+- 日志查看: `http://localhost:8080/logs`
 
 ---
 

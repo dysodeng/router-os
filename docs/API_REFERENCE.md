@@ -1121,4 +1121,340 @@ func processIncomingPacket(processor *packet.Processor, data []byte) {
 
 ---
 
+## 🌐 Web API 接口
+
+Router OS 提供了完整的 RESTful API 接口，支持通过 HTTP 请求管理路由器。
+
+### 认证
+
+所有 API 请求都需要基本认证（Basic Authentication）。
+
+```bash
+# 示例请求头
+Authorization: Basic <base64(username:password)>
+```
+
+### 路由管理 API
+
+#### 获取路由列表
+
+```http
+GET /api/routes
+```
+
+**响应示例:**
+```json
+{
+  "routes": [
+    {
+      "destination": "192.168.1.0/24",
+      "gateway": "192.168.1.1",
+      "iface": "eth0",
+      "metric": 0,
+      "proto": "kernel",
+      "scope": "link",
+      "src": "192.168.1.100",
+      "flags": "U",
+      "type": "connected",
+      "status": "活跃",
+      "age": "2024-01-01 10:00:00 CST",
+      "ttl": "永久"
+    }
+  ],
+  "stats": {
+    "total": 5,
+    "static": 2,
+    "dynamic": 1,
+    "connected": 2,
+    "default": 0
+  }
+}
+```
+
+#### 添加路由
+
+```http
+POST /api/routes
+Content-Type: application/json
+
+{
+  "destination": "10.0.0.0/8",
+  "gateway": "192.168.1.1",
+  "iface": "eth0",
+  "metric": 10,
+  "proto": "static",
+  "scope": "universe",
+  "src": "",
+  "flags": "UG"
+}
+```
+
+#### 删除路由
+
+```http
+DELETE /api/routes
+Content-Type: application/json
+
+{
+  "destination": "10.0.0.0/8"
+}
+```
+
+### 接口管理 API
+
+#### 获取接口列表
+
+```http
+GET /api/interfaces
+```
+
+**响应示例:**
+```json
+{
+  "interfaces": [
+    {
+      "name": "eth0",
+      "ip": "192.168.1.100",
+      "status": "up",
+      "mac": "00:11:22:33:44:55",
+      "mtu": 1500
+    }
+  ]
+}
+```
+
+### ARP 表管理 API
+
+#### 获取 ARP 表
+
+```http
+GET /api/arp
+```
+
+**响应示例:**
+```json
+{
+  "entries": [
+    {
+      "ip": "192.168.1.1",
+      "mac": "aa:bb:cc:dd:ee:ff",
+      "interface": "eth0",
+      "state": "reachable",
+      "last_seen": "2024-01-01T10:00:00Z"
+    }
+  ]
+}
+```
+
+#### 解析 IP 地址
+
+```http
+POST /api/arp/resolve
+Content-Type: application/json
+
+{
+  "ip": "192.168.1.1"
+}
+```
+
+### 防火墙管理 API
+
+#### 获取防火墙规则
+
+```http
+GET /api/firewall/rules
+```
+
+#### 添加防火墙规则
+
+```http
+POST /api/firewall/rules
+Content-Type: application/json
+
+{
+  "action": "ACCEPT",
+  "protocol": "tcp",
+  "source": "192.168.1.0/24",
+  "destination": "0.0.0.0/0",
+  "port": "80"
+}
+```
+
+### DHCP 管理 API
+
+#### 获取 DHCP 租约
+
+```http
+GET /api/dhcp/leases
+```
+
+**响应示例:**
+```json
+{
+  "leases": [
+    {
+      "ip": "192.168.1.100",
+      "mac": "00:11:22:33:44:55",
+      "hostname": "client1",
+      "lease_time": "2024-01-01T12:00:00Z",
+      "expires": "2024-01-01T13:00:00Z"
+    }
+  ]
+}
+```
+
+### 端口管理 API
+
+#### 获取端口列表
+
+```http
+GET /api/ports
+```
+
+**响应示例:**
+```json
+[
+  {
+    "name": "eth0",
+    "role": "lan",
+    "status": 1,
+    "ip_address": "192.168.1.1",
+    "netmask": "255.255.255.0",
+    "gateway": "192.168.1.1",
+    "mtu": 1500,
+    "speed": 1000,
+    "duplex": "full",
+    "tx_packets": 1000,
+    "rx_packets": 2000,
+    "tx_bytes": 1048576,
+    "rx_bytes": 2097152,
+    "tx_errors": 0,
+    "rx_errors": 0,
+    "tx_dropped": 0,
+    "rx_dropped": 0
+  }
+]
+```
+
+#### 更新端口角色
+
+```http
+POST /api/ports/role
+Content-Type: application/json
+
+{
+  "interface": "eth0",
+  "role": "wan"
+}
+```
+
+#### 批量更新端口角色
+
+```http
+POST /api/ports/batch
+Content-Type: application/json
+
+{
+  "updates": [
+    {"interface": "eth0", "role": "wan"},
+    {"interface": "eth1", "role": "lan"}
+  ]
+}
+```
+
+#### 获取端口拓扑
+
+```http
+GET /api/ports/topology
+```
+
+### 系统监控 API
+
+#### 获取系统状态
+
+```http
+GET /api/monitor/system
+```
+
+**响应示例:**
+```json
+{
+  "uptime": "72h30m15s",
+  "memory_usage": 134217728,
+  "cpu_usage": 15.5,
+  "goroutines": 25,
+  "timestamp": "2024-01-01T10:00:00Z"
+}
+```
+
+#### 获取接口统计
+
+```http
+GET /api/monitor/interfaces
+```
+
+#### 获取路由统计
+
+```http
+GET /api/monitor/routes
+```
+
+### VPN 管理 API
+
+#### 获取 VPN 状态
+
+```http
+GET /api/vpn/status
+```
+
+#### 获取 VPN 客户端列表
+
+```http
+GET /api/vpn/clients
+```
+
+### QoS 管理 API
+
+#### 获取 QoS 规则
+
+```http
+GET /api/qos/rules
+```
+
+#### 添加 QoS 规则
+
+```http
+POST /api/qos/rules
+Content-Type: application/json
+
+{
+  "name": "high_priority",
+  "priority": 1,
+  "bandwidth": "10Mbps",
+  "source": "192.168.1.0/24"
+}
+```
+
+### 错误响应
+
+API 错误响应遵循标准 HTTP 状态码：
+
+```json
+{
+  "error": "Invalid request",
+  "code": 400,
+  "details": "Missing required field: destination"
+}
+```
+
+**常见状态码:**
+- `200 OK`: 请求成功
+- `400 Bad Request`: 请求参数错误
+- `401 Unauthorized`: 认证失败
+- `404 Not Found`: 资源不存在
+- `405 Method Not Allowed`: 方法不允许
+- `500 Internal Server Error`: 服务器内部错误
+
+---
+
 **📖 本 API 参考文档提供了 Router OS 的完整接口说明，更多使用示例请参考 [examples](../examples/) 目录。**
