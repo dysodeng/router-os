@@ -74,6 +74,11 @@ func (r *Renderer) LoadTemplates() error {
 			headerTemplate,
 			filepath.Join(r.basePath, "qos", "index.html"),
 		},
+		"ports": {
+			baseTemplate,
+			headerTemplate,
+			filepath.Join(r.basePath, "ports", "index.html"),
+		},
 	}
 
 	// 加载每个模板

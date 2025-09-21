@@ -1,0 +1,554 @@
+{{define "content"}}
+<div class="container">
+    {{template "header" .}}
+    
+    <div class="main-content">
+        <div class="page-header">
+            <h1>端口管理</h1>
+            <p>配置网络接口的角色分配（WAN/LAN）</p>
+        </div>
+
+        <!-- 网络拓扑概览 -->
+        <div class="topology-overview">
+            <div class="topology-stats">
+                <div class="stat-card">
+                    <h3>WAN端口</h3>
+                    <span class="stat-number" id="wan-count">0</span>
+                </div>
+                <div class="stat-card">
+                    <h3>LAN端口</h3>
+                    <span class="stat-number" id="lan-count">0</span>
+                </div>
+                <div class="stat-card">
+                    <h3>未分配</h3>
+                    <span class="stat-number" id="unassigned-count">0</span>
+                </div>
+                <div class="stat-card">
+                    <h3>总端口</h3>
+                    <span class="stat-number" id="total-count">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 端口分配区域 -->
+        <div class="port-assignment">
+            <div class="assignment-zones">
+                <!-- WAN区域 -->
+                <div class="zone wan-zone" data-role="WAN">
+                    <div class="zone-header">
+                        <h3>WAN端口</h3>
+                        <span class="zone-description">外网接口，连接到互联网</span>
+                    </div>
+                    <div class="port-drop-zone" id="wan-zone">
+                        <div class="drop-placeholder">
+                            <i class="icon-globe"></i>
+                            <p>拖拽端口到此处设为WAN</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LAN区域 -->
+                <div class="zone lan-zone" data-role="LAN">
+                    <div class="zone-header">
+                        <h3>LAN端口</h3>
+                        <span class="zone-description">内网接口，连接到局域网设备</span>
+                    </div>
+                    <div class="port-drop-zone" id="lan-zone">
+                        <div class="drop-placeholder">
+                            <i class="icon-network"></i>
+                            <p>拖拽端口到此处设为LAN</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 未分配区域 -->
+                <div class="zone unassigned-zone" data-role="UNASSIGNED">
+                    <div class="zone-header">
+                        <h3>未分配端口</h3>
+                        <span class="zone-description">尚未配置角色的接口</span>
+                    </div>
+                    <div class="port-drop-zone" id="unassigned-zone">
+                        <div class="drop-placeholder">
+                            <i class="icon-question"></i>
+                            <p>未分配的端口显示在此处</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 端口详细信息表格 -->
+        <div class="port-details">
+            <div class="section-header">
+                <h2>端口详细信息</h2>
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="refreshPorts()">
+                        <i class="icon-refresh"></i> 刷新
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportConfig()">
+                        <i class="icon-download"></i> 导出配置
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="ports-table">
+                    <thead>
+                        <tr>
+                            <th>接口名称</th>
+                            <th>角色</th>
+                            <th>状态</th>
+                            <th>IP地址</th>
+                            <th>子网掩码</th>
+                            <th>网关</th>
+                            <th>MTU</th>
+                            <th>发送包数</th>
+                            <th>接收包数</th>
+                            <th>错误数</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ports-table-body">
+                        <!-- 端口数据将通过JavaScript动态加载 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 端口配置模态框 -->
+    <div id="port-config-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>端口配置</h3>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="port-config-form">
+                    <div class="form-group">
+                        <label for="port-name">接口名称</label>
+                        <input type="text" id="port-name" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="port-role">端口角色</label>
+                        <select id="port-role">
+                            <option value="UNASSIGNED">未分配</option>
+                            <option value="WAN">WAN</option>
+                            <option value="LAN">LAN</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                        <button type="submit" class="btn btn-primary">保存</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载指示器 -->
+    <div id="loading" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>正在加载端口信息...</p>
+    </div>
+</div>
+
+<style>
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.page-header {
+    margin-bottom: 30px;
+}
+
+.page-header h1 {
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.page-header p {
+    color: #666;
+    font-size: 16px;
+}
+
+.topology-overview {
+    margin-bottom: 30px;
+}
+
+.topology-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.stat-card h3 {
+    margin: 0 0 10px 0;
+    color: #666;
+    font-size: 14px;
+    font-weight: normal;
+}
+
+.stat-number {
+    font-size: 32px;
+    font-weight: bold;
+    color: #333;
+}
+
+.port-assignment {
+    margin-bottom: 40px;
+}
+
+.assignment-zones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.zone {
+    border: 2px solid #ddd;
+    border-radius: 12px;
+    padding: 20px;
+    background: #f9f9f9;
+    transition: all 0.3s ease;
+}
+
+.zone.wan-zone {
+    border-color: #e74c3c;
+}
+
+.zone.lan-zone {
+    border-color: #3498db;
+}
+
+.zone.unassigned-zone {
+    border-color: #95a5a6;
+}
+
+.zone-header {
+    margin-bottom: 15px;
+}
+
+.zone-header h3 {
+    margin: 0 0 5px 0;
+    color: #333;
+}
+
+.zone-description {
+    color: #666;
+    font-size: 14px;
+}
+
+.port-drop-zone {
+    min-height: 150px;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.port-drop-zone.drag-over {
+    border-color: #3498db;
+    background-color: #e8f4fd;
+}
+
+.drop-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #999;
+}
+
+.drop-placeholder i {
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.port-item {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 8px 0;
+    cursor: move;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.port-item:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+}
+
+.port-item.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+}
+
+.port-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.port-name {
+    font-weight: bold;
+    color: #333;
+}
+
+.port-status {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.port-status.up {
+    background: #d4edda;
+    color: #155724;
+}
+
+.port-status.down {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: #3498db;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2980b9;
+}
+
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+}
+
+.table-container {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.ports-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ports-table th,
+.ports-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.ports-table th {
+    background: #f8f9fa;
+    font-weight: bold;
+    color: #333;
+}
+
+.ports-table tr:hover {
+    background: #f8f9fa;
+}
+
+.role-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.role-badge.wan {
+    background: #fee;
+    color: #e74c3c;
+}
+
+.role-badge.lan {
+    background: #e8f4fd;
+    color: #3498db;
+}
+
+.role-badge.unassigned {
+    background: #f8f9fa;
+    color: #95a5a6;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: #fff;
+    margin: 15% auto;
+    padding: 0;
+    border-radius: 8px;
+    width: 500px;
+    max-width: 90%;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #333;
+}
+
+.close {
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #999;
+}
+
+.close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255,255,255,0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .assignment-zones {
+        grid-template-columns: 1fr;
+    }
+    
+    .topology-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .table-container {
+        overflow-x: auto;
+    }
+}
+</style>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/ports.js"></script>
+{{end}}

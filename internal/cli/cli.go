@@ -35,7 +35,15 @@ type CLI struct {
 }
 
 // NewCLI 创建CLI实例
-func NewCLI(r *router.Router, cm *config.ConfigManager, sm *protocols.StaticRouteManager, rm *protocols.RIPManager, om *protocols.OSPFManager, bm *protocols.BGPManager, im *protocols.ISISManager) *CLI {
+func NewCLI(
+	r *router.Router,
+	cm *config.ConfigManager,
+	sm *protocols.StaticRouteManager,
+	rm *protocols.RIPManager,
+	om *protocols.OSPFManager,
+	bm *protocols.BGPManager,
+	im *protocols.ISISManager,
+) *CLI {
 	// 获取用户主目录
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -109,17 +117,17 @@ func (cli *CLI) handlePacketSend(args []string) {
 		return
 	}
 
-	packet := processor.CreatePacket(packet.PacketTypeIPv4, srcIPAddr, dstIPAddr, []byte(data), "")
+	pkt := processor.CreatePacket(packet.PacketTypeIPv4, srcIPAddr, dstIPAddr, []byte(data), "")
 
 	fmt.Printf("创建数据包:\n")
-	fmt.Printf("  源IP: %s\n", packet.Source.String())
-	fmt.Printf("  目标IP: %s\n", packet.Destination.String())
-	fmt.Printf("  数据: %s\n", string(packet.Data))
-	fmt.Printf("  TTL: %d\n", packet.TTL)
+	fmt.Printf("  源IP: %s\n", pkt.Source.String())
+	fmt.Printf("  目标IP: %s\n", pkt.Destination.String())
+	fmt.Printf("  数据: %s\n", string(pkt.Data))
+	fmt.Printf("  TTL: %d\n", pkt.TTL)
 
 	// 处理数据包
 	fmt.Println("\n开始处理数据包...")
-	_ = processor.ProcessPacket(packet)
+	_ = processor.ProcessPacket(pkt)
 
 	fmt.Println("数据包处理完成")
 }

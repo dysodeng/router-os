@@ -11,7 +11,9 @@ import (
 	"router-os/internal/firewall"
 	"router-os/internal/forwarding"
 	"router-os/internal/interfaces"
+	"router-os/internal/nat"
 	"router-os/internal/netconfig"
+	"router-os/internal/port"
 	"router-os/internal/qos"
 	"router-os/internal/routing"
 	"router-os/internal/vpn"
@@ -84,6 +86,12 @@ type RouterInstance struct {
 
 	// VPN VPN服务器
 	VPN *vpn.VPNServer
+
+	// PortManager 端口管理器
+	PortManager *port.Manager
+
+	// NATManager NAT管理器
+	NATManager *nat.Manager
 }
 
 // NewWebServer 创建Web服务器

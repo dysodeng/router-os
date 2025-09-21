@@ -10,14 +10,14 @@
     "key_file": ""
   },
   "dhcp": {
-    "enabled": false,
+    "enabled": true,
     "interface": "ens20",
     "start_ip": "192.168.2.100",
     "end_ip": "192.168.2.200",
     "subnet_mask": "255.255.255.0",
     "gateway": "192.168.2.1",
     "dns_servers": ["8.8.8.8", "8.8.4.4"],
-    "lease_time": 3600
+    "lease_time": 86400
   },
   "vpn": {
     "enabled": false,

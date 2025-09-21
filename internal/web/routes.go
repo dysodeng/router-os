@@ -38,6 +38,8 @@ func (ws *Server) setupRoutes() *http.ServeMux {
 		QoS:              ws.router.QoS,
 		DHCP:             ws.router.DHCP,
 		VPN:              ws.router.VPN,
+		PortManager:      ws.router.PortManager,
+		NATManager:       ws.router.NATManager,
 	}
 
 	// 创建处理器
@@ -51,6 +53,7 @@ func (ws *Server) setupRoutes() *http.ServeMux {
 	qosHandler := handlers.NewQoSHandler(renderer, routerInstance)
 	vpnHandler := handlers.NewVPNHandler(renderer, routerInstance)
 	dhcpHandler := handlers.NewDHCPHandler(renderer, routerInstance)
+	portsHandler := handlers.NewPortsHandler(renderer, routerInstance)
 
 	// 静态文件和首页
 	mux.HandleFunc("/", dashboardHandler.ShowDashboard)
@@ -112,6 +115,13 @@ func (ws *Server) setupRoutes() *http.ServeMux {
 	mux.HandleFunc("/dhcp", dhcpHandler.ShowDHCP)
 	mux.HandleFunc("/api/dhcp/config", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(dhcpHandler.HandleDHCPConfig))))
 	mux.HandleFunc("/api/dhcp/leases", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(dhcpHandler.HandleDHCPLeases))))
+
+	// 端口管理路由
+	mux.HandleFunc("/ports", portsHandler.ShowPorts)
+	mux.HandleFunc("/api/ports", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(portsHandler.HandlePortsList))))
+	mux.HandleFunc("/api/ports/role", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(portsHandler.HandlePortRoleUpdate))))
+	mux.HandleFunc("/api/ports/topology", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(portsHandler.HandlePortTopology))))
+	mux.HandleFunc("/api/ports/batch", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(portsHandler.HandleBatchPortRoleUpdate))))
 
 	return mux
 }

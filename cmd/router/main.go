@@ -18,7 +18,9 @@ import (
 	"router-os/internal/firewall"
 	"router-os/internal/forwarding"
 	"router-os/internal/interfaces"
+	"router-os/internal/nat"
 	"router-os/internal/netconfig"
+	"router-os/internal/port"
 	"router-os/internal/qos"
 	"router-os/internal/routing"
 	"router-os/internal/vpn"
@@ -179,6 +181,19 @@ func main() {
 		log.Fatalf("启动QoS引擎失败: %v", err)
 	}
 
+	log.Println("初始化NAT管理器...")
+	natBackend := nat.NewIptablesManager()
+	natManager := nat.NewManager(natBackend, interfaceManager)
+	if err = natManager.Start(); err != nil {
+		log.Fatalf("启动NAT管理器失败: %v", err)
+	}
+
+	log.Println("初始化端口管理器...")
+	portManager := port.NewManager(interfaceManager, natManager)
+	if err = portManager.Start(); err != nil {
+		log.Fatalf("启动端口管理器失败: %v", err)
+	}
+
 	log.Println("初始化DHCP服务器...")
 	dhcpServer := dhcp.NewDHCPServer()
 
@@ -295,6 +310,8 @@ func main() {
 		QoS:              qosEngine,
 		DHCP:             dhcpServer,
 		VPN:              vpnServer,
+		PortManager:      portManager,
+		NATManager:       natManager,
 	}
 
 	// 根据配置决定是否启动Web管理界面
