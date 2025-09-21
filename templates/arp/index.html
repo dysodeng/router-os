@@ -16,6 +16,43 @@
     <div id="page-content" style="display: none;">
         <div class="content">
             <h2>ARP表</h2>
+            
+            <!-- 操作按钮区域 -->
+            <div class="operation-buttons" style="margin-bottom: 20px;">
+                <button id="refreshBtn" class="btn btn-primary">刷新</button>
+                <button id="clearBtn" class="btn btn-warning">清空ARP表</button>
+                <button id="addStaticBtn" class="btn btn-success">添加静态条目</button>
+                <button id="exportBtn" class="btn btn-info">导出</button>
+                <button id="statsBtn" class="btn btn-secondary">统计信息</button>
+            </div>
+            
+            <!-- 添加静态条目表单 -->
+            <div id="addStaticForm" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
+                <h4>添加静态ARP条目</h4>
+                <div style="display: flex; gap: 10px; align-items: end;">
+                    <div>
+                        <label for="staticIP">IP地址:</label>
+                        <input type="text" id="staticIP" placeholder="192.168.1.100" style="padding: 5px;">
+                    </div>
+                    <div>
+                        <label for="staticMAC">MAC地址:</label>
+                        <input type="text" id="staticMAC" placeholder="00:11:22:33:44:55" style="padding: 5px;">
+                    </div>
+                    <div>
+                        <label for="staticInterface">接口:</label>
+                        <input type="text" id="staticInterface" placeholder="eth0" style="padding: 5px;">
+                    </div>
+                    <button id="confirmAddBtn" class="btn btn-success">确认添加</button>
+                    <button id="cancelAddBtn" class="btn btn-secondary">取消</button>
+                </div>
+            </div>
+            
+            <!-- 统计信息区域 -->
+            <div id="statsInfo" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f0f8ff;">
+                <h4>ARP表统计信息</h4>
+                <div id="statsContent"></div>
+            </div>
+            
             <table class="table">
                 <thead>
                     <tr>

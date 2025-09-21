@@ -266,6 +266,15 @@ func (at *Table) Start() error {
 		return fmt.Errorf("启动ARP监听器失败: %v", err)
 	}
 
+	// 启动系统ARP监控器
+	if err := at.startSystemARPMonitor(); err != nil {
+		at.running = false
+		return fmt.Errorf("启动系统ARP监控器失败: %v", err)
+	}
+
+	// 初始加载系统ARP表
+	go at.loadInitialSystemARPTable()
+
 	return nil
 }
 
@@ -665,6 +674,130 @@ func (at *Table) waitForARPReply(targetIP net.IP, timeout time.Duration) (net.Ha
 	}
 
 	return nil, fmt.Errorf("ARP解析超时: 无法获取IP %s 的MAC地址", targetIP.String())
+}
+
+// SelectBestInterface 智能选择最合适的网络接口
+// 根据目标IP地址选择最佳的网络接口进行ARP请求
+func (at *Table) SelectBestInterface(targetIP net.IP) (string, error) {
+	at.mu.RLock()
+	defer at.mu.RUnlock()
+
+	// 如果没有可用接口，返回错误
+	if len(at.interfaces) == 0 {
+		return "", fmt.Errorf("no network interfaces available")
+	}
+
+	var bestInterface string
+	var bestScore int
+
+	for ifaceName, ifaceInfo := range at.interfaces {
+		// 跳过未启用的接口
+		if !ifaceInfo.IsUp {
+			continue
+		}
+
+		// 跳过回环接口
+		if strings.HasPrefix(ifaceName, "lo") {
+			continue
+		}
+
+		score := 0
+
+		// 如果目标IP在同一子网内，优先选择
+		if ifaceInfo.Subnet != nil && ifaceInfo.Subnet.Contains(targetIP) {
+			score += 100
+		}
+
+		// 优先选择有IP地址的接口
+		if ifaceInfo.IP != nil && !ifaceInfo.IP.IsUnspecified() {
+			score += 50
+		}
+
+		// 优先选择以太网接口
+		if strings.HasPrefix(ifaceName, "en") || strings.HasPrefix(ifaceName, "eth") {
+			score += 30
+		}
+
+		// 优先选择WiFi接口
+		if strings.HasPrefix(ifaceName, "wl") || strings.HasPrefix(ifaceName, "wifi") {
+			score += 20
+		}
+
+		// 优先选择桥接接口
+		if strings.HasPrefix(ifaceName, "br") || strings.HasPrefix(ifaceName, "bridge") {
+			score += 10
+		}
+
+		// 选择得分最高的接口
+		if score > bestScore {
+			bestScore = score
+			bestInterface = ifaceName
+		}
+	}
+
+	if bestInterface == "" {
+		return "", fmt.Errorf("no suitable interface found for target IP %s", targetIP.String())
+	}
+
+	return bestInterface, nil
+}
+
+// SyncInterfacesFromManager 从接口管理器同步接口信息
+func (at *Table) SyncInterfacesFromManager(interfaceManager interface{}) error {
+	at.mu.Lock()
+	defer at.mu.Unlock()
+
+	// 直接使用系统接口发现，避免复杂的类型转换
+	return at.discoverSystemInterfaces()
+}
+
+// discoverSystemInterfaces 发现系统网络接口
+func (at *Table) discoverSystemInterfaces() error {
+	// 获取系统所有网络接口
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return fmt.Errorf("failed to get system interfaces: %v", err)
+	}
+
+	// 清空现有接口信息
+	at.interfaces = make(map[string]*InterfaceInfo)
+
+	for _, iface := range interfaces {
+		// 跳过回环接口
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		// 获取接口地址
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		interfaceInfo := &InterfaceInfo{
+			Name:       iface.Name,
+			Index:      iface.Index,
+			MAC:        iface.HardwareAddr,
+			MTU:        iface.MTU,
+			IsUp:       iface.Flags&net.FlagUp != 0,
+			LastUpdate: time.Now(),
+		}
+
+		// 获取第一个IPv4地址
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok {
+				if ip := ipNet.IP.To4(); ip != nil {
+					interfaceInfo.IP = ip
+					interfaceInfo.Subnet = ipNet
+					break
+				}
+			}
+		}
+
+		at.interfaces[iface.Name] = interfaceInfo
+	}
+
+	return nil
 }
 
 // SendARPRequest 发送ARP请求
@@ -1307,5 +1440,35 @@ func (at *Table) ClearPendingRequests() {
 
 	for key := range at.pendingRequests {
 		delete(at.pendingRequests, key)
+	}
+}
+
+// loadInitialSystemARPTable 初始加载系统ARP表
+func (at *Table) loadInitialSystemARPTable() {
+	// 获取当前系统ARP表
+	systemARPTable := at.getSystemARPTable()
+
+	fmt.Printf("DEBUG: 系统ARP表条目数量: %d\n", len(systemARPTable))
+	for ip, mac := range systemARPTable {
+		fmt.Printf("DEBUG: 发现系统ARP条目: %s -> %s\n", ip, mac)
+	}
+
+	// 将系统ARP条目添加到内部表中
+	for ip, mac := range systemARPTable {
+		if parsedIP := net.ParseIP(ip); parsedIP != nil {
+			if parsedMAC, err := net.ParseMAC(mac); err == nil {
+				// 添加到ARP表，使用空接口名（系统ARP表通常不包含接口信息）
+				err := at.HandleARPReply(parsedIP, parsedMAC, "")
+				if err != nil {
+					fmt.Printf("DEBUG: 添加ARP条目失败: %s -> %s, 错误: %v\n", ip, mac, err)
+				} else {
+					fmt.Printf("DEBUG: 成功添加ARP条目: %s -> %s\n", ip, mac)
+				}
+			} else {
+				fmt.Printf("DEBUG: 解析MAC地址失败: %s, 错误: %v\n", mac, err)
+			}
+		} else {
+			fmt.Printf("DEBUG: 解析IP地址失败: %s\n", ip)
+		}
 	}
 }

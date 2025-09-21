@@ -77,7 +77,7 @@ type RouterInstance struct {
 	Firewall *firewall.Firewall
 
 	// QoS QoS引擎
-	QoS *qos.QoSEngine
+	QoS *qos.Engine
 
 	// DHCP DHCP服务器
 	DHCP *dhcp.Server

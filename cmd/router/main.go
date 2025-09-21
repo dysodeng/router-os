@@ -71,7 +71,7 @@ func main() {
 	routingTable := routing.NewOptimizedTableWithDefaults()
 
 	log.Println("初始化ARP表...")
-	arpTable := arp.NewARPTable(1000, 300, 60*time.Second)
+	arpTable := arp.NewARPTable(1000, 300*time.Second, 60*time.Second)
 	if err = arpTable.Start(); err != nil {
 		log.Fatalf("启动ARP表失败: %v", err)
 	}

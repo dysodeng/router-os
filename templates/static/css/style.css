@@ -116,12 +116,57 @@ body {
     background: #2980b9; 
 }
 
+.btn-primary { 
+    background: #3498db; 
+}
+
+.btn-primary:hover { 
+    background: #2980b9; 
+}
+
+.btn-success { 
+    background: #27ae60; 
+}
+
+.btn-success:hover { 
+    background: #229954; 
+}
+
+.btn-warning { 
+    background: #f39c12; 
+}
+
+.btn-warning:hover { 
+    background: #e67e22; 
+}
+
+.btn-info { 
+    background: #17a2b8; 
+}
+
+.btn-info:hover { 
+    background: #138496; 
+}
+
+.btn-secondary { 
+    background: #6c757d; 
+}
+
+.btn-secondary:hover { 
+    background: #5a6268; 
+}
+
 .btn-danger { 
     background: #e74c3c; 
 }
 
 .btn-danger:hover { 
     background: #c0392b; 
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
 }
 
 /* 表单样式 */

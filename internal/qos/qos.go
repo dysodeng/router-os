@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// QoSEngine QoS流量控制引擎
+// Engine QoS流量控制引擎
 // 提供流量整形、带宽限制、优先级控制等功能
 //
 // 主要功能：
@@ -31,7 +31,7 @@ import (
 // - 基于DSCP标记的分类
 // - 基于应用层协议的分类
 // - 自定义规则分类
-type QoSEngine struct {
+type Engine struct {
 	// mu 读写锁
 	mu sync.RWMutex
 
@@ -51,10 +51,10 @@ type QoSEngine struct {
 	limiters map[string]*BandwidthLimiter
 
 	// 统计信息
-	stats QoSStats
+	stats Stats
 
 	// 配置参数
-	config QoSConfig
+	config Config
 }
 
 // TrafficClassifier 流量分类器
@@ -297,8 +297,8 @@ type BandwidthSample struct {
 	Bytes uint64
 }
 
-// QoSStats QoS统计信息
-type QoSStats struct {
+// Stats QoS统计信息
+type Stats struct {
 	// PacketsProcessed 处理的数据包总数
 	PacketsProcessed uint64
 
@@ -408,8 +408,8 @@ type LimiterStats struct {
 	PeakBandwidth uint64
 }
 
-// QoSConfig QoS配置
-type QoSConfig struct {
+// Config QoS配置
+type Config struct {
 	// Enabled 是否启用QoS
 	Enabled bool
 
@@ -435,7 +435,7 @@ type QoSConfig struct {
 // NewQoSEngine 创建新的QoS引擎
 //
 // 返回值：
-//   - *QoSEngine: QoS引擎实例
+//   - *Engine: QoS引擎实例
 //
 // 使用示例：
 //
@@ -460,17 +460,17 @@ type QoSConfig struct {
 //	    MaxBandwidth: 10 * 1024 * 1024, // 10 Mbps
 //	}
 //	qos.CreateQueue(queue)
-func NewQoSEngine() *QoSEngine {
-	qos := &QoSEngine{
+func NewQoSEngine() *Engine {
+	qos := &Engine{
 		running:  false,
 		shapers:  make(map[string]*TrafficShaper),
 		limiters: make(map[string]*BandwidthLimiter),
-		stats: QoSStats{
+		stats: Stats{
 			QueueStats: make(map[string]QueueStats),
 			ClassStats: make(map[string]ClassStats),
 			StartTime:  time.Now(),
 		},
-		config: QoSConfig{
+		config: Config{
 			Enabled:          true,
 			DefaultClass:     "default",
 			MaxQueues:        100,
@@ -514,7 +514,7 @@ func NewQoSEngine() *QoSEngine {
 }
 
 // Start 启动QoS引擎
-func (qos *QoSEngine) Start() error {
+func (qos *Engine) Start() error {
 	qos.mu.Lock()
 	defer qos.mu.Unlock()
 
@@ -544,7 +544,7 @@ func (qos *QoSEngine) Start() error {
 }
 
 // Stop 停止QoS引擎
-func (qos *QoSEngine) Stop() {
+func (qos *Engine) Stop() {
 	qos.mu.Lock()
 	defer qos.mu.Unlock()
 
@@ -567,7 +567,7 @@ func (qos *QoSEngine) Stop() {
 // 返回值：
 //   - bool: 是否成功处理（true表示入队成功，false表示被丢弃）
 //   - error: 处理错误
-func (qos *QoSEngine) ProcessPacket(packet *QueuedPacket) (bool, error) {
+func (qos *Engine) ProcessPacket(packet *QueuedPacket) (bool, error) {
 	if !qos.IsRunning() {
 		return false, fmt.Errorf("QoS引擎未运行")
 	}
@@ -626,7 +626,7 @@ func (qos *QoSEngine) ProcessPacket(packet *QueuedPacket) (bool, error) {
 }
 
 // classifyPacket 对数据包进行分类
-func (qos *QoSEngine) classifyPacket(packet *QueuedPacket) string {
+func (qos *Engine) classifyPacket(packet *QueuedPacket) string {
 	qos.classifier.mu.RLock()
 	defer qos.classifier.mu.RUnlock()
 
@@ -664,7 +664,7 @@ func (qos *QoSEngine) classifyPacket(packet *QueuedPacket) string {
 }
 
 // ruleMatches 检查规则是否匹配数据包
-func (qos *QoSEngine) ruleMatches(rule *ClassificationRule, packet *QueuedPacket) bool {
+func (qos *Engine) ruleMatches(rule *ClassificationRule, packet *QueuedPacket) bool {
 	// 检查协议
 	if rule.Protocol != "" && rule.Protocol != "all" && rule.Protocol != packet.Protocol {
 		return false
@@ -699,7 +699,7 @@ func (qos *QoSEngine) ruleMatches(rule *ClassificationRule, packet *QueuedPacket
 }
 
 // portInRange 检查端口是否在范围内
-func (qos *QoSEngine) portInRange(port int, portRange PortRange) bool {
+func (qos *Engine) portInRange(port int, portRange PortRange) bool {
 	if portRange.End == 0 {
 		portRange.End = portRange.Start
 	}
@@ -707,7 +707,7 @@ func (qos *QoSEngine) portInRange(port int, portRange PortRange) bool {
 }
 
 // selectQueue 选择队列
-func (qos *QoSEngine) selectQueue(class string) string {
+func (qos *Engine) selectQueue(class string) string {
 	qos.queueManager.mu.RLock()
 	defer qos.queueManager.mu.RUnlock()
 
@@ -729,7 +729,7 @@ func (qos *QoSEngine) selectQueue(class string) string {
 }
 
 // getQueue 获取队列
-func (qos *QoSEngine) getQueue(queueID string) (*TrafficQueue, bool) {
+func (qos *Engine) getQueue(queueID string) (*TrafficQueue, bool) {
 	qos.queueManager.mu.RLock()
 	defer qos.queueManager.mu.RUnlock()
 
@@ -738,7 +738,7 @@ func (qos *QoSEngine) getQueue(queueID string) (*TrafficQueue, bool) {
 }
 
 // enqueuePacket 将数据包入队
-func (qos *QoSEngine) enqueuePacket(queue *TrafficQueue, packet *QueuedPacket) bool {
+func (qos *Engine) enqueuePacket(queue *TrafficQueue, packet *QueuedPacket) bool {
 	// 检查队列容量
 	if len(queue.packets) >= queue.MaxPackets {
 		return false
@@ -765,7 +765,7 @@ func (qos *QoSEngine) enqueuePacket(queue *TrafficQueue, packet *QueuedPacket) b
 }
 
 // updateDropStats 更新丢包统计
-func (qos *QoSEngine) updateDropStats(packet *QueuedPacket) {
+func (qos *Engine) updateDropStats(packet *QueuedPacket) {
 	qos.mu.Lock()
 	defer qos.mu.Unlock()
 
@@ -774,7 +774,7 @@ func (qos *QoSEngine) updateDropStats(packet *QueuedPacket) {
 }
 
 // updateClassStats 更新类别统计
-func (qos *QoSEngine) updateClassStats(class string, packet *QueuedPacket) {
+func (qos *Engine) updateClassStats(class string, packet *QueuedPacket) {
 	qos.mu.Lock()
 	defer qos.mu.Unlock()
 
@@ -790,7 +790,7 @@ func (qos *QoSEngine) updateClassStats(class string, packet *QueuedPacket) {
 }
 
 // queueProcessor 队列处理器
-func (qos *QoSEngine) queueProcessor() {
+func (qos *Engine) queueProcessor() {
 	ticker := time.NewTicker(1 * time.Millisecond) // 高频处理
 	defer ticker.Stop()
 
@@ -801,7 +801,7 @@ func (qos *QoSEngine) queueProcessor() {
 }
 
 // processQueues 处理队列
-func (qos *QoSEngine) processQueues() {
+func (qos *Engine) processQueues() {
 	// 使用调度器选择下一个要处理的队列
 	queueID := qos.queueManager.scheduler.Schedule(qos.queueManager.queues)
 	if queueID == "" {
@@ -836,7 +836,7 @@ func (qos *QoSEngine) processQueues() {
 }
 
 // sendPacket 发送数据包
-func (qos *QoSEngine) sendPacket(packet *QueuedPacket) {
+func (qos *Engine) sendPacket(packet *QueuedPacket) {
 	// 记录发送开始时间
 	sendStart := time.Now()
 
@@ -884,7 +884,7 @@ func (qos *QoSEngine) sendPacket(packet *QueuedPacket) {
 }
 
 // performNetworkSend 执行实际的网络发送
-func (qos *QoSEngine) performNetworkSend(packet *QueuedPacket) error {
+func (qos *Engine) performNetworkSend(packet *QueuedPacket) error {
 	// 在真实环境中，这里会调用网络接口发送数据包
 	// 例如：通过 raw socket、TAP/TUN 接口或网络驱动程序
 
@@ -906,7 +906,7 @@ func (qos *QoSEngine) performNetworkSend(packet *QueuedPacket) error {
 //
 // 返回值：
 //   - error: 添加成功返回nil，失败返回错误信息
-func (qos *QoSEngine) AddClassificationRule(rule ClassificationRule) error {
+func (qos *Engine) AddClassificationRule(rule ClassificationRule) error {
 	qos.classifier.mu.Lock()
 	defer qos.classifier.mu.Unlock()
 
@@ -928,7 +928,7 @@ func (qos *QoSEngine) AddClassificationRule(rule ClassificationRule) error {
 //
 // 返回值：
 //   - error: 删除成功返回nil，失败返回错误信息
-func (qos *QoSEngine) RemoveClassificationRule(ruleID string) error {
+func (qos *Engine) RemoveClassificationRule(ruleID string) error {
 	qos.classifier.mu.Lock()
 	defer qos.classifier.mu.Unlock()
 
@@ -949,7 +949,7 @@ func (qos *QoSEngine) RemoveClassificationRule(ruleID string) error {
 //
 // 返回值：
 //   - error: 创建成功返回nil，失败返回错误信息
-func (qos *QoSEngine) CreateQueue(queue *TrafficQueue) error {
+func (qos *Engine) CreateQueue(queue *TrafficQueue) error {
 	qos.queueManager.mu.Lock()
 	defer qos.queueManager.mu.Unlock()
 
@@ -989,7 +989,7 @@ func (qos *QoSEngine) CreateQueue(queue *TrafficQueue) error {
 //
 // 返回值：
 //   - error: 删除成功返回nil，失败返回错误信息
-func (qos *QoSEngine) DeleteQueue(queueID string) error {
+func (qos *Engine) DeleteQueue(queueID string) error {
 	qos.queueManager.mu.Lock()
 	defer qos.queueManager.mu.Unlock()
 
@@ -1006,7 +1006,7 @@ func (qos *QoSEngine) DeleteQueue(queueID string) error {
 //
 // 返回值：
 //   - map[string]*TrafficQueue: 队列映射
-func (qos *QoSEngine) GetQueues() map[string]*TrafficQueue {
+func (qos *Engine) GetQueues() map[string]*TrafficQueue {
 	qos.queueManager.mu.RLock()
 	defer qos.queueManager.mu.RUnlock()
 
@@ -1021,8 +1021,8 @@ func (qos *QoSEngine) GetQueues() map[string]*TrafficQueue {
 // GetStats 获取QoS统计信息
 //
 // 返回值：
-//   - QoSStats: 统计信息
-func (qos *QoSEngine) GetStats() QoSStats {
+//   - Stats: 统计信息
+func (qos *Engine) GetStats() Stats {
 	qos.mu.RLock()
 	defer qos.mu.RUnlock()
 
@@ -1033,7 +1033,7 @@ func (qos *QoSEngine) GetStats() QoSStats {
 //
 // 返回值：
 //   - bool: 运行状态
-func (qos *QoSEngine) IsRunning() bool {
+func (qos *Engine) IsRunning() bool {
 	qos.mu.RLock()
 	defer qos.mu.RUnlock()
 
@@ -1044,7 +1044,7 @@ func (qos *QoSEngine) IsRunning() bool {
 //
 // 参数：
 //   - config: QoS配置
-func (qos *QoSEngine) SetConfig(config QoSConfig) {
+func (qos *Engine) SetConfig(config Config) {
 	qos.mu.Lock()
 	defer qos.mu.Unlock()
 
@@ -1054,8 +1054,8 @@ func (qos *QoSEngine) SetConfig(config QoSConfig) {
 // GetConfig 获取QoS配置
 //
 // 返回值：
-//   - QoSConfig: QoS配置
-func (qos *QoSEngine) GetConfig() QoSConfig {
+//   - Config: QoS配置
+func (qos *Engine) GetConfig() Config {
 	qos.mu.RLock()
 	defer qos.mu.RUnlock()
 
@@ -1065,7 +1065,7 @@ func (qos *QoSEngine) GetConfig() QoSConfig {
 // 内部辅助方法
 
 // statsWorker 统计工作协程
-func (qos *QoSEngine) statsWorker() {
+func (qos *Engine) statsWorker() {
 	ticker := time.NewTicker(qos.config.StatsInterval)
 	defer ticker.Stop()
 
@@ -1076,7 +1076,7 @@ func (qos *QoSEngine) statsWorker() {
 }
 
 // cleanupWorker 清理工作协程
-func (qos *QoSEngine) cleanupWorker() {
+func (qos *Engine) cleanupWorker() {
 	ticker := time.NewTicker(qos.config.CleanupInterval)
 	defer ticker.Stop()
 
@@ -1087,7 +1087,7 @@ func (qos *QoSEngine) cleanupWorker() {
 }
 
 // updateStats 更新统计信息
-func (qos *QoSEngine) updateStats() {
+func (qos *Engine) updateStats() {
 	// 更新队列统计
 	qos.queueManager.mu.RLock()
 	for queueID, queue := range qos.queueManager.queues {
@@ -1099,7 +1099,7 @@ func (qos *QoSEngine) updateStats() {
 }
 
 // cleanup 清理过期数据
-func (qos *QoSEngine) cleanup() {
+func (qos *Engine) cleanup() {
 	// 清理过期的带宽采样数据
 	for _, limiter := range qos.limiters {
 		limiter.cleanup()
@@ -1360,7 +1360,7 @@ type AdaptiveQoS struct {
 	mu sync.RWMutex
 
 	// 关联的QoS引擎
-	qosEngine *QoSEngine
+	qosEngine *Engine
 
 	// 控制器
 	congestionController *CongestionController
@@ -1439,7 +1439,7 @@ func NewFairnessController() *FairnessController {
 }
 
 // NewAdaptiveQoS 创建自适应QoS管理器
-func NewAdaptiveQoS(qosEngine *QoSEngine) *AdaptiveQoS {
+func NewAdaptiveQoS(qosEngine *Engine) *AdaptiveQoS {
 	return &AdaptiveQoS{
 		qosEngine:            qosEngine,
 		congestionController: NewCongestionController(),

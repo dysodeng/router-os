@@ -80,6 +80,10 @@ func (ws *WebServer) setupRoutes() *http.ServeMux {
 	mux.HandleFunc("/arp", arpHandler.ShowARP)
 	mux.HandleFunc("/api/arp", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(arpHandler.HandleARPList))))
 	mux.HandleFunc("/api/arp/clear", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(arpHandler.HandleARPClear))))
+	mux.HandleFunc("/api/arp/add", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(arpHandler.HandleARPAdd))))
+	mux.HandleFunc("/api/arp/delete/", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(arpHandler.HandleARPDelete))))
+	mux.HandleFunc("/api/arp/resolve", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(arpHandler.HandleARPResolve))))
+	mux.HandleFunc("/api/arp/stats", corsMiddleware(loggingMiddleware(authMiddleware.RequireAuth(arpHandler.HandleARPStats))))
 
 	// 防火墙路由
 	mux.HandleFunc("/firewall", firewallHandler.ShowFirewall)
