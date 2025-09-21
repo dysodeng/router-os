@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"router-os/internal/routing"
+	"router-os/internal/module/routing"
 )
 
 func RunPerformanceDemo() {

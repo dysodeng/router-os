@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"router-os/internal/interfaces"
+	"router-os/internal/module/interfaces"
 	"router-os/internal/web/templates"
 )
 

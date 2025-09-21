@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"router-os/internal/routing"
+	"router-os/internal/module/routing"
 )
 
 // RunAdvancedRoutingDemo 运行高级路由功能演示

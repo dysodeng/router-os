@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"router-os/internal/routing"
+	"router-os/internal/module/routing"
 )
 
 // RoutingAlgorithmsDemo 路由算法演示

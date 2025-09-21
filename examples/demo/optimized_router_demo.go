@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"router-os/internal/protocols"
-	"router-os/internal/router"
-	"router-os/internal/routing"
+	"router-os/internal/module/protocols"
+	"router-os/internal/module/router"
+	"router-os/internal/module/routing"
 )
 
 func RunOptimizedRouterDemo() {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"router-os/internal/routing"
+	"router-os/internal/module/routing"
 	"router-os/internal/web/templates"
 )
 
