@@ -123,7 +123,7 @@ func (im *IptablesManager) AddForwardRule(fromInterface, toInterface string) err
 	output2, err := cmd2.CombinedOutput()
 	if err != nil {
 		// 如果第二条规则失败，尝试删除第一条规则
-		im.RemoveForwardRule(fromInterface, toInterface)
+		_ = im.RemoveForwardRule(fromInterface, toInterface)
 		return fmt.Errorf("添加反向转发规则失败: %v, 输出: %s", err, string(output2))
 	}
 
