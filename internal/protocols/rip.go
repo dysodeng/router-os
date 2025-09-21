@@ -207,7 +207,7 @@ type RIPManager struct {
 	// routingTable 路由表引用
 	// RIP管理器通过这个接口读取和更新路由表
 	// 所有学习到的路由都会添加到这个路由表中
-	routingTable routing.RoutingTableInterface
+	routingTable routing.TableInterface
 
 	// interfaceManager 接口管理器引用
 	// 用于获取网络接口信息，确定在哪些接口上运行RIP
@@ -260,7 +260,7 @@ type RIPManager struct {
 //	if err != nil {
 //	    log.Printf("启动RIP协议失败: %v", err)
 //	}
-func NewRIPManager(routingTable routing.RoutingTableInterface, interfaceManager *interfaces.Manager) *RIPManager {
+func NewRIPManager(routingTable routing.TableInterface, interfaceManager *interfaces.Manager) *RIPManager {
 	return &RIPManager{
 		routingTable:     routingTable,
 		interfaceManager: interfaceManager,

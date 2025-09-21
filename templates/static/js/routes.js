@@ -2,28 +2,29 @@
 
 class RoutesManager {
     constructor() {
-        this.authManager = new AuthManager();
-        this.init();
+        this.authManager = window.authManager;
+        this.allRoutes = [];
+        this.currentFilter = 'all';
     }
 
     async init() {
-        // 检查认证状态
-        if (!await this.authManager.checkAuth()) {
+        if (!this.authManager.isAuthenticated()) {
+            window.location.href = '/login';
             return;
         }
 
-        // 显示页面内容
-        document.getElementById('auth-check').style.display = 'none';
-        document.getElementById('page-content').style.display = 'block';
-
-        // 加载路由列表
         await this.loadRoutes();
-
+        
         // 设置定时刷新
-        setInterval(() => this.loadRoutes(), 5000);
+        setInterval(() => {
+            this.loadRoutes();
+        }, 30000); // 30秒刷新一次
 
-        // 绑定添加路由表单事件
+        // 绑定添加路由表单
         this.bindAddRouteForm();
+        
+        // 绑定过滤器
+        this.bindFilters();
     }
 
     async loadRoutes() {
@@ -31,7 +32,9 @@ class RoutesManager {
             const response = await this.authManager.fetchWithAuth('/api/routes');
             if (response.ok) {
                 const data = await response.json();
-                this.renderRoutes(data.routes || []);
+                this.allRoutes = data.routes || [];
+                this.renderRoutes(this.allRoutes);
+                this.updateStats(data.stats || {});
             } else {
                 console.error('加载路由列表失败:', response.status);
             }
@@ -44,17 +47,54 @@ class RoutesManager {
         const tbody = document.getElementById('routesList');
         tbody.innerHTML = '';
 
-        routes.forEach(route => {
+        if (!routes || routes.length === 0) {
             const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="13" style="text-align: center; color: #666;">暂无路由数据</td>
+            `;
+            tbody.appendChild(row);
+            return;
+        }
+
+        routes.forEach(route => {
+            // 调试信息：打印路由数据
+            console.log('Route data:', route);
+            const row = document.createElement('tr');
+            
+            // 根据状态设置行的样式
+            let statusClass = '';
+            let statusColor = '';
+            switch (route.status) {
+                case '过期':
+                    statusClass = 'route-expired';
+                    statusColor = 'color: #dc3545;';
+                    break;
+                case '即将过期':
+                    statusClass = 'route-expiring';
+                    statusColor = 'color: #fd7e14;';
+                    break;
+                default:
+                    statusColor = 'color: #28a745;';
+            }
+            
+            row.className = statusClass;
             row.innerHTML = `
                 <td>${route.destination || 'N/A'}</td>
                 <td>${route.gateway || 'N/A'}</td>
-                <td>${route.interface || 'N/A'}</td>
+                <td>${route.iface || 'N/A'}</td>
                 <td>${route.metric || 'N/A'}</td>
-                <td>${route.type || 'N/A'}</td>
+                <td><span class="route-proto-badge">${route.proto || 'N/A'}</span></td>
+                <td><span class="route-scope-badge">${route.scope || 'N/A'}</span></td>
+                <td>${route.src || 'N/A'}</td>
+                <td><span class="route-flags-badge">${route.flags || 'N/A'}</span></td>
+                <td><span class="route-type-badge route-type-${route.type || 'unknown'}">${route.type || 'N/A'}</span></td>
+                <td>${route.age || 'N/A'}</td>
+                <td>${route.ttl || 'N/A'}</td>
+                <td><span style="${statusColor}">${route.status || 'N/A'}</span></td>
                 <td>
                     <button class="btn btn-sm btn-danger" 
-                            onclick="routesManager.deleteRoute('${route.destination}', '${route.gateway}')">
+                            onclick="routesManager.deleteRoute('${route.destination}', '${route.gateway}')"
+                            ${route.type === '直连' ? 'disabled title="直连路由不能删除"' : ''}>
                         删除
                     </button>
                 </td>
@@ -95,7 +135,7 @@ class RoutesManager {
                 body: JSON.stringify({
                     destination: destination,
                     gateway: gateway,
-                    interface: interfaceName,
+                    iface: interfaceName,
                     metric: parseInt(metric) || 1
                 })
             });
@@ -143,6 +183,66 @@ class RoutesManager {
         }
     }
 
+    updateStats(stats) {
+        // 更新统计信息
+        document.getElementById('totalRoutes').textContent = stats.total || 0;
+        document.getElementById('staticRoutes').textContent = stats.static || 0;
+        document.getElementById('dynamicRoutes').textContent = stats.dynamic || 0;
+        document.getElementById('connectedRoutes').textContent = stats.connected || 0;
+    }
+
+    bindFilters() {
+        // 绑定过滤器按钮
+        const filterButtons = document.querySelectorAll('.filter-btn');
+        filterButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // 移除所有按钮的active类
+                filterButtons.forEach(b => b.classList.remove('active'));
+                // 添加当前按钮的active类
+                e.target.classList.add('active');
+                
+                // 设置当前过滤器
+                this.currentFilter = e.target.dataset.filter;
+                
+                // 应用过滤
+                this.applyFilter();
+            });
+        });
+
+        // 绑定搜索框
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                this.applyFilter();
+            });
+        }
+    }
+
+    applyFilter() {
+        let filteredRoutes = [...this.allRoutes];
+
+        // 按类型过滤
+        if (this.currentFilter !== 'all') {
+            filteredRoutes = filteredRoutes.filter(route => 
+                route.type === this.currentFilter
+            );
+        }
+
+        // 按搜索关键词过滤
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput && searchInput.value.trim()) {
+            const keyword = searchInput.value.trim().toLowerCase();
+            filteredRoutes = filteredRoutes.filter(route => 
+                (route.destination && route.destination.toLowerCase().includes(keyword)) ||
+                (route.gateway && route.gateway.toLowerCase().includes(keyword)) ||
+                (route.iface && route.iface.toLowerCase().includes(keyword))
+            );
+        }
+
+        // 渲染过滤后的路由
+        this.renderRoutes(filteredRoutes);
+    }
+
     showMessage(message, type) {
         // 创建消息提示
         const messageDiv = document.createElement('div');
@@ -167,4 +267,5 @@ class RoutesManager {
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
     window.routesManager = new RoutesManager();
+    window.routesManager.init();
 });

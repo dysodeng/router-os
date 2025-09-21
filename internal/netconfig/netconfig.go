@@ -111,6 +111,18 @@ type RouteEntry struct {
 
 	// Type 路由类型 (direct, static, dynamic)
 	Type string
+
+	// Proto 路由协议
+	Proto string
+
+	// Scope 路由作用域
+	Scope string
+
+	// Src 源地址
+	Src net.IP
+
+	// Flags 路由标志
+	Flags string
 }
 
 // NewNetworkConfigurator 创建网络配置器
@@ -732,39 +744,85 @@ func (nc *NetworkConfigurator) parseRouteTable(output string) ([]RouteEntry, err
 func (nc *NetworkConfigurator) parseLinuxRouteTable(lines []string) ([]RouteEntry, error) {
 	var routes []RouteEntry
 
-	for i, line := range lines {
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line == "" || i == 0 { // 跳过空行和标题行
+		if line == "" {
 			continue
 		}
 
-		fields := strings.Fields(line)
-		if len(fields) >= 8 {
-			route := RouteEntry{
-				Type: "static",
-			}
+		// ip route show 输出格式示例：
+		// default via 192.168.1.1 dev eth0 proto dhcp metric 100
+		// 192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.100 metric 100
+		// 10.0.0.0/8 via 192.168.1.1 dev eth0 proto static metric 200
 
-			// Linux route -n 输出格式：Destination Gateway Genmask Flags Metric Ref Use Iface
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		route := RouteEntry{
+			Type:  "static",
+			Proto: "kernel",
+			Scope: "global",
+			Flags: "",
+		}
+
+		// 解析目标网络
+		if fields[0] == "default" {
+			// 默认路由 0.0.0.0/0
+			_, defaultNet, _ := net.ParseCIDR("0.0.0.0/0")
+			route.Destination = defaultNet
+		} else {
 			if dest, err := nc.parseDestination(fields[0]); err == nil {
 				route.Destination = dest
 			}
+		}
 
-			if fields[1] != "0.0.0.0" && fields[1] != "*" {
-				route.Gateway = net.ParseIP(fields[1])
-			}
-
-			if len(fields) > 7 {
-				route.Interface = fields[7]
-			}
-
-			if len(fields) > 4 {
-				if metric, err := strconv.Atoi(fields[4]); err == nil {
-					route.Metric = metric
+		// 解析其他字段
+		for i := 1; i < len(fields); i++ {
+			switch fields[i] {
+			case "via":
+				// 下一个字段是网关
+				if i+1 < len(fields) {
+					route.Gateway = net.ParseIP(fields[i+1])
+					i++ // 跳过下一个字段
+				}
+			case "dev":
+				// 下一个字段是接口
+				if i+1 < len(fields) {
+					route.Interface = fields[i+1]
+					i++ // 跳过下一个字段
+				}
+			case "proto":
+				// 下一个字段是协议
+				if i+1 < len(fields) {
+					route.Proto = fields[i+1]
+					i++ // 跳过下一个字段
+				}
+			case "scope":
+				// 下一个字段是作用域
+				if i+1 < len(fields) {
+					route.Scope = fields[i+1]
+					i++ // 跳过下一个字段
+				}
+			case "src":
+				// 下一个字段是源地址
+				if i+1 < len(fields) {
+					route.Src = net.ParseIP(fields[i+1])
+					i++ // 跳过下一个字段
+				}
+			case "metric":
+				// 下一个字段是度量值
+				if i+1 < len(fields) {
+					if metric, err := strconv.Atoi(fields[i+1]); err == nil {
+						route.Metric = metric
+					}
+					i++ // 跳过下一个字段
 				}
 			}
-
-			routes = append(routes, route)
 		}
+
+		routes = append(routes, route)
 	}
 
 	return routes, nil

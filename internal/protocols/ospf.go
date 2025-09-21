@@ -335,17 +335,17 @@ type OSPFNeighbor struct {
 
 // OSPFManager OSPF协议管理器
 type OSPFManager struct {
-	routerID         uint32                        // 路由器ID
-	areas            map[uint32]*OSPFArea          // 区域列表
-	routingTable     routing.RoutingTableInterface // 路由表
-	interfaceManager *interfaces.Manager           // 接口管理器
-	running          bool                          // 运行状态
-	mu               sync.RWMutex                  // 读写锁
-	logger           *logging.Logger               // 日志记录器
+	routerID         uint32                 // 路由器ID
+	areas            map[uint32]*OSPFArea   // 区域列表
+	routingTable     routing.TableInterface // 路由表
+	interfaceManager *interfaces.Manager    // 接口管理器
+	running          bool                   // 运行状态
+	mu               sync.RWMutex           // 读写锁
+	logger           *logging.Logger        // 日志记录器
 }
 
 // NewOSPFManager 创建OSPF管理器
-func NewOSPFManager(routingTable routing.RoutingTableInterface, interfaceManager *interfaces.Manager) *OSPFManager {
+func NewOSPFManager(routingTable routing.TableInterface, interfaceManager *interfaces.Manager) *OSPFManager {
 	return &OSPFManager{
 		routerID:         generateRouterID(),
 		areas:            make(map[uint32]*OSPFArea),

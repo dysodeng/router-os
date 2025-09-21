@@ -18,7 +18,7 @@ type RouterInstance struct {
 	InterfaceManager *interfaces.Manager
 
 	// RoutingTable 路由表
-	RoutingTable routing.RoutingTableInterface
+	RoutingTable routing.TableInterface
 
 	// ARPTable ARP表
 	ARPTable *arp.Table

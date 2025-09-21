@@ -87,7 +87,7 @@ func RunBasicDemo() {
 	fmt.Println("\n测试完成")
 }
 
-func displayRoutingTable(table routing.RoutingTableInterface) {
+func displayRoutingTable(table routing.TableInterface) {
 	routes := table.GetAllRoutes()
 	if len(routes) == 0 {
 		fmt.Println("路由表为空")

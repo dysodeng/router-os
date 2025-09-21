@@ -159,7 +159,7 @@ class DHCPManager {
 
         let leasesHtml = '';
         if (leases.length === 0) {
-            leasesHtml = '<tr><td colspan="6" class="text-center">暂无DHCP租约</td></tr>';
+            leasesHtml = '<tr><td colspan="7" class="text-center">暂无DHCP租约</td></tr>';
         } else {
             leases.forEach(lease => {
                 leasesHtml += `

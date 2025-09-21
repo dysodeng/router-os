@@ -2,10 +2,10 @@ package routing
 
 import "net"
 
-// RoutingTableInterface 通用路由表接口
+// TableInterface 通用路由表接口
 // 定义了所有路由表实现必须支持的基本操作
 // 这样可以让Router在运行时选择使用传统Table还是OptimizedTable
-type RoutingTableInterface interface {
+type TableInterface interface {
 	// AddRoute 添加路由到路由表
 	// 参数：
 	//   - route Route: 要添加的路由条目

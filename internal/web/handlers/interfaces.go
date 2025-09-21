@@ -35,10 +35,49 @@ func (h *InterfacesHandler) ShowInterfaces(w http.ResponseWriter, r *http.Reques
 
 // HandleInterfacesList 处理接口列表API
 func (h *InterfacesHandler) HandleInterfacesList(w http.ResponseWriter, r *http.Request) {
-	interfaces := h.router.InterfaceManager.GetAllInterfaces()
+	interfacesMap := h.router.InterfaceManager.GetAllInterfaces()
+
+	// 转换为前端期望的格式
+	var interfaces []map[string]interface{}
+	for _, iface := range interfacesMap {
+		var status string
+		switch iface.Status {
+		case 0: // InterfaceStatusDown
+			status = "down"
+		case 1: // InterfaceStatusUp
+			status = "up"
+		case 2: // InterfaceStatusTesting
+			status = "testing"
+		default:
+			status = "unknown"
+		}
+
+		var ipStr string
+		if iface.IPAddress != nil {
+			ipStr = iface.IPAddress.String()
+		}
+
+		var macStr string
+		if iface.MACAddress != nil {
+			macStr = iface.MACAddress.String()
+		}
+
+		interfaceData := map[string]interface{}{
+			"name":   iface.Name,
+			"ip":     ipStr,
+			"status": status,
+			"mac":    macStr,
+			"mtu":    iface.MTU,
+		}
+		interfaces = append(interfaces, interfaceData)
+	}
+
+	response := map[string]interface{}{
+		"interfaces": interfaces,
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(interfaces)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // HandleInterfaceUpdate 处理接口更新API

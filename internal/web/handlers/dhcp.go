@@ -147,15 +147,33 @@ func (h *DHCPHandler) HandleDHCPLeases(w http.ResponseWriter, r *http.Request) {
 			if remaining < 0 {
 				remaining = 0
 			}
+
+			// 计算结束时间
+			endTime := lease.StartTime.Add(lease.Duration)
+
+			// 判断租约状态
+			status := "active"
+			if remaining <= 0 {
+				status = "expired"
+			}
+
 			leases = append(leases, map[string]interface{}{
 				"ip":         lease.IP.String(),
 				"mac":        lease.MAC.String(),
 				"hostname":   lease.Hostname,
 				"lease_time": lease.Duration.String(),
 				"remaining":  remaining.String(),
+				"status":     status,
+				"start_time": lease.StartTime.In(time.Local).Format("2006-01-02 15:04:05 CST"),
+				"end_time":   endTime.In(time.Local).Format("2006-01-02 15:04:05 CST"),
 			})
 		}
 	}
 
-	json.NewEncoder(w).Encode(leases)
+	// 包装在leases字段中
+	response := map[string]interface{}{
+		"leases": leases,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }

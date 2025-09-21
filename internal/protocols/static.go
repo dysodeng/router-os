@@ -9,11 +9,11 @@ import (
 
 // StaticRouteManager 静态路由管理器
 type StaticRouteManager struct {
-	routingTable routing.RoutingTableInterface
+	routingTable routing.TableInterface
 }
 
 // NewStaticRouteManager 创建静态路由管理器
-func NewStaticRouteManager(routingTable routing.RoutingTableInterface) *StaticRouteManager {
+func NewStaticRouteManager(routingTable routing.TableInterface) *StaticRouteManager {
 	return &StaticRouteManager{
 		routingTable: routingTable,
 	}
@@ -79,6 +79,10 @@ func (srm *StaticRouteManager) AddDefaultRoute(gateway string, iface string, met
 		Gateway:     gatewayIP,
 		Interface:   iface,
 		Metric:      metric,
+		Proto:       "static",
+		Scope:       "global",
+		Src:         nil,
+		Flags:       "default",
 		Type:        routing.RouteTypeDefault,
 		TTL:         0,
 	}

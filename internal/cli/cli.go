@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"router-os/internal/config"
 	"router-os/internal/packet"
@@ -562,7 +563,7 @@ func (cli *CLI) handleRIPCommand(args []string) {
 			neighbors := cli.ripManager.GetNeighbors()
 			fmt.Println("RIP邻居:")
 			for neighbor, lastSeen := range neighbors {
-				fmt.Printf("  %s (最后更新: %s)\n", neighbor, lastSeen.Format("2006-01-02 15:04:05"))
+				fmt.Printf("  %s (最后更新: %s)\n", neighbor, lastSeen.In(time.Local).Format("2006-01-02 15:04:05 CST"))
 			}
 		}
 

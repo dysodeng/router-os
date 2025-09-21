@@ -141,7 +141,7 @@ type Config struct {
 // - 并发处理：支持多线程并发转发
 type Engine struct {
 	// routingTable 路由表接口
-	routingTable routing.RoutingTableInterface
+	routingTable routing.TableInterface
 
 	// interfaceManager 接口管理器
 	interfaceManager *interfaces.Manager
@@ -194,7 +194,7 @@ type Engine struct {
 //	engine.Start()
 //	defer engine.Stop()
 func NewForwardingEngine(
-	routingTable routing.RoutingTableInterface,
+	routingTable routing.TableInterface,
 	interfaceManager *interfaces.Manager,
 	arpTable *arp.Table,
 ) *Engine {
@@ -285,21 +285,35 @@ func (fe *Engine) Stop() {
 		return
 	}
 
+	fmt.Println("正在关闭转发引擎...")
 	fe.running = false
 
 	// 停止工作线程池
-	for _, worker := range fe.workerPool {
+	for i, worker := range fe.workerPool {
 		worker.Stop()
+		fmt.Printf("已停止工作线程 %d\n", i)
 	}
 
 	// 停止监控组件
-	fe.metricsCollector.Stop()
-	fe.alertManager.Stop()
+	if fe.metricsCollector != nil {
+		fe.metricsCollector.Stop()
+		fmt.Println("已停止指标收集器")
+	}
+
+	if fe.alertManager != nil {
+		fe.alertManager.Stop()
+		fmt.Println("已停止告警管理器")
+	}
 
 	// 停止故障切换管理器中的健康检查
-	for _, checker := range fe.failoverManager.healthCheckers {
-		checker.Stop()
+	if fe.failoverManager != nil && fe.failoverManager.healthCheckers != nil {
+		for _, checker := range fe.failoverManager.healthCheckers {
+			checker.Stop()
+		}
+		fmt.Println("已停止健康检查器")
 	}
+
+	fmt.Println("转发引擎已关闭")
 }
 
 // ForwardPacket 转发数据包

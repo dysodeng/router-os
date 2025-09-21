@@ -41,6 +41,17 @@ class InterfacesManager {
         const tbody = document.getElementById('interfacesList');
         tbody.innerHTML = '';
 
+        if (!interfaces || interfaces.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="5" style="text-align: center; color: #666;">
+                    暂无网络接口数据
+                </td>
+            `;
+            tbody.appendChild(row);
+            return;
+        }
+
         interfaces.forEach(iface => {
             const row = document.createElement('tr');
             row.innerHTML = `

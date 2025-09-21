@@ -11,7 +11,7 @@ import (
 
 // Router 路由器主结构
 type Router struct {
-	routingTable     routing.RoutingTableInterface
+	routingTable     routing.TableInterface
 	interfaceManager *interfaces.Manager
 	packetProcessor  *packet.Processor
 	running          bool
@@ -26,7 +26,7 @@ func NewRouter() (*Router, error) {
 
 // NewRouterWithConfig 使用配置创建新的路由器实例
 func NewRouterWithConfig(config *RouterConfig) (*Router, error) {
-	var routingTable routing.RoutingTableInterface
+	var routingTable routing.TableInterface
 
 	// 根据配置选择路由表类型
 	switch config.RoutingTableType {
@@ -96,7 +96,7 @@ func (r *Router) IsRunning() bool {
 }
 
 // GetRoutingTable 获取路由表
-func (r *Router) GetRoutingTable() routing.RoutingTableInterface {
+func (r *Router) GetRoutingTable() routing.TableInterface {
 	return r.routingTable
 }
 

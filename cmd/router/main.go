@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,6 +26,15 @@ import (
 )
 
 func main() {
+	// 设置时区为中国时区
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		log.Printf("加载中国时区失败，使用本地时区: %v", err)
+	} else {
+		time.Local = loc
+		log.Println("已设置时区为中国时区 (Asia/Shanghai)")
+	}
+
 	// 命令行参数
 	var (
 		configFile = flag.String("config", "config.json", "配置文件路径")
@@ -57,7 +68,7 @@ func main() {
 	}
 
 	log.Println("初始化路由表...")
-	routingTable := routing.NewTable()
+	routingTable := routing.NewOptimizedTableWithDefaults()
 
 	log.Println("初始化ARP表...")
 	arpTable := arp.NewARPTable(1000, 300, 60*time.Second)
@@ -109,12 +120,35 @@ func main() {
 				routeType = routing.RouteTypeStatic // 默认为静态路由
 			}
 
+			// 使用netconfig.RouteEntry中的字段，如果为空则使用默认值
+			proto := routeEntry.Proto
+			if proto == "" {
+				proto = "kernel"
+			}
+
+			scope := routeEntry.Scope
+			if scope == "" {
+				scope = "global"
+			}
+
+			flags := routeEntry.Flags
+			if flags == "" {
+				// 根据路由类型设置默认flags
+				if routeType == routing.RouteTypeDefault {
+					flags = "default"
+				}
+			}
+
 			// 创建路由条目
 			route := routing.Route{
 				Destination: destNet,
 				Gateway:     gateway,
 				Interface:   routeEntry.Interface,
 				Metric:      routeEntry.Metric,
+				Proto:       proto,
+				Scope:       scope,
+				Src:         routeEntry.Src,
+				Flags:       flags,
 				Type:        routeType,
 				Age:         time.Now(),
 			}
@@ -276,7 +310,7 @@ func main() {
 		webServer = web.NewWebServer(webConfig, router)
 
 		go func() {
-			if err := webServer.Start(); err != nil {
+			if err = webServer.Start(); err != nil {
 				log.Printf("Web服务器启动失败: %v", err)
 			}
 		}()
@@ -296,22 +330,62 @@ func main() {
 
 	log.Println("正在关闭 Router OS...")
 
-	// 优雅关闭所有服务
-	if webServer != nil {
-		if err := webServer.Stop(); err != nil {
-			log.Printf("关闭Web服务器失败: %v", err)
+	// 创建带超时的context，最多等待5秒
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 使用WaitGroup来并发关闭服务
+	var wg sync.WaitGroup
+
+	// 定义关闭函数
+	shutdownService := func(name string, stopFunc func()) {
+		defer wg.Done()
+		log.Printf("正在关闭 %s...", name)
+		stopFunc()
+		log.Printf("%s 已关闭", name)
+	}
+
+	shutdownServiceWithError := func(name string, stopFunc func() error) {
+		defer wg.Done()
+		log.Printf("正在关闭 %s...", name)
+		if err := stopFunc(); err != nil {
+			log.Printf("关闭 %s 失败: %v", name, err)
+		} else {
+			log.Printf("%s 已关闭", name)
 		}
 	}
 
-	vpnServer.Stop()
-	dhcpServer.Stop()
-	qosEngine.Stop()
-	firewallEngine.Stop()
-	forwardingEngine.Stop()
-	arpTable.Stop()
-	interfaceManager.Stop()
+	// 并发关闭所有服务
+	if webServer != nil {
+		wg.Add(1)
+		go shutdownServiceWithError("Web服务器", webServer.Stop)
+	}
 
-	log.Println("Router OS 已关闭")
+	wg.Add(6)
+	go shutdownService("VPN服务器", vpnServer.Stop)
+	go shutdownService("DHCP服务器", dhcpServer.Stop)
+	go shutdownService("QoS引擎", qosEngine.Stop)
+	go shutdownService("防火墙引擎", firewallEngine.Stop)
+	go shutdownService("转发引擎", forwardingEngine.Stop)
+	go shutdownService("ARP表", arpTable.Stop)
+
+	// 接口管理器最后关闭
+	wg.Add(1)
+	go shutdownService("接口管理器", interfaceManager.Stop)
+
+	// 等待所有服务关闭或超时
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Println("Router OS 已正常关闭")
+	case <-ctx.Done():
+		log.Println("关闭超时，强制退出")
+	}
 }
 
 // maskBits 计算子网掩码的位数

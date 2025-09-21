@@ -1,0 +1,152 @@
+/* 路由表样式 */
+.route-stats {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 6px;
+    padding: 15px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.stat-number {
+    font-size: 24px;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #6c757d;
+    margin-top: 5px;
+}
+
+.route-controls {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.filter-btn {
+    margin-right: 10px;
+    margin-bottom: 5px;
+}
+
+.filter-btn.active {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+.search-box {
+    max-width: 300px;
+}
+
+/* 路由类型标签 */
+.route-type-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.route-type-静态 {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.route-type-动态 {
+    background-color: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.route-type-直连 {
+    background-color: #e8f5e8;
+    color: #388e3c;
+}
+
+.route-type-默认 {
+    background-color: #fff3e0;
+    color: #f57c00;
+}
+
+/* 路由状态样式 */
+.route-expired {
+    background-color: #ffebee !important;
+}
+
+.route-expiring {
+    background-color: #fff8e1 !important;
+}
+
+/* 表格样式增强 */
+.table th {
+    background-color: #f8f9fa;
+    border-top: none;
+    font-weight: 600;
+    color: #495057;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .route-stats .row > div {
+        margin-bottom: 15px;
+    }
+    
+    .route-controls {
+        text-align: center;
+    }
+    
+    .filter-btn {
+        margin: 2px;
+        font-size: 12px;
+    }
+    
+    .search-box {
+        max-width: 100%;
+        margin-top: 10px;
+    }
+}
+
+/* 动画效果 */
+.table tbody tr {
+    transition: background-color 0.2s;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* 按钮样式 */
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

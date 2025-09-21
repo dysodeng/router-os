@@ -301,21 +301,21 @@ type BGPRIBEntry struct {
 
 // BGPManager BGP协议管理器
 type BGPManager struct {
-	localAS          uint16                        // 本地AS号
-	routerID         uint32                        // 路由器ID
-	peers            map[string]*BGPPeer           // BGP邻居列表
-	ribIn            map[string]*BGPRIBEntry       // Adj-RIB-In
-	ribOut           map[string]*BGPRIBEntry       // Adj-RIB-Out
-	locRIB           map[string]*BGPRIBEntry       // Loc-RIB
-	routingTable     routing.RoutingTableInterface // 路由表
-	interfaceManager *interfaces.Manager           // 接口管理器
-	running          bool                          // 运行状态
-	mu               sync.RWMutex                  // 读写锁
-	logger           *logging.Logger               // 日志记录器
+	localAS          uint16                  // 本地AS号
+	routerID         uint32                  // 路由器ID
+	peers            map[string]*BGPPeer     // BGP邻居列表
+	ribIn            map[string]*BGPRIBEntry // Adj-RIB-In
+	ribOut           map[string]*BGPRIBEntry // Adj-RIB-Out
+	locRIB           map[string]*BGPRIBEntry // Loc-RIB
+	routingTable     routing.TableInterface  // 路由表
+	interfaceManager *interfaces.Manager     // 接口管理器
+	running          bool                    // 运行状态
+	mu               sync.RWMutex            // 读写锁
+	logger           *logging.Logger         // 日志记录器
 }
 
 // NewBGPManager 创建BGP管理器
-func NewBGPManager(localAS uint16, routingTable routing.RoutingTableInterface, interfaceManager *interfaces.Manager) *BGPManager {
+func NewBGPManager(localAS uint16, routingTable routing.TableInterface, interfaceManager *interfaces.Manager) *BGPManager {
 	return &BGPManager{
 		localAS:          localAS,
 		routerID:         generateBGPRouterID(),

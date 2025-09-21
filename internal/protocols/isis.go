@@ -336,17 +336,17 @@ type ISISArea struct {
 
 // IS-IS管理器
 type ISISManager struct {
-	SystemID     []byte                        // 系统ID
-	Areas        map[string]*ISISArea          // 区域列表
-	routingTable routing.RoutingTableInterface // 路由表
-	logger       *logging.Logger               // 日志记录器
-	ctx          context.Context               // 上下文
-	cancel       context.CancelFunc            // 取消函数
-	mutex        sync.RWMutex                  // 读写锁
+	SystemID     []byte                 // 系统ID
+	Areas        map[string]*ISISArea   // 区域列表
+	routingTable routing.TableInterface // 路由表
+	logger       *logging.Logger        // 日志记录器
+	ctx          context.Context        // 上下文
+	cancel       context.CancelFunc     // 取消函数
+	mutex        sync.RWMutex           // 读写锁
 }
 
 // NewISISManager 创建新的IS-IS管理器
-func NewISISManager(systemID []byte, routingTable routing.RoutingTableInterface, logger *logging.Logger) *ISISManager {
+func NewISISManager(systemID []byte, routingTable routing.TableInterface, logger *logging.Logger) *ISISManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &ISISManager{

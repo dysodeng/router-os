@@ -180,8 +180,12 @@ type Table struct {
 
 	// running 运行状态
 	running bool
+	// stopChan 用于优雅停止所有goroutine
+	stopChan chan struct{}
+	// wg 用于等待所有goroutine退出
+	wg sync.WaitGroup
 
-	// stats 统计信息
+	// 统计信息
 	stats Stats
 
 	// conflicts IP冲突记录
@@ -231,6 +235,7 @@ func NewARPTable(maxEntries int, defaultTTL time.Duration, cleanupInterval time.
 		defaultTTL:      defaultTTL,
 		cleanupInterval: cleanupInterval,
 		running:         false,
+		stopChan:        make(chan struct{}),
 		stats:           Stats{},
 		conflicts:       make([]Conflict, 0),
 		macChanges:      make([]MACChange, 0),
@@ -250,6 +255,9 @@ func (at *Table) Start() error {
 	}
 
 	at.running = true
+
+	// 启动清理循环
+	at.wg.Add(1)
 	go at.cleanupLoop()
 
 	// 启动ARP数据包监听器
@@ -264,16 +272,22 @@ func (at *Table) Start() error {
 // Stop 停止ARP表管理器
 func (at *Table) Stop() {
 	at.mu.Lock()
-	defer at.mu.Unlock()
-
 	if !at.running {
+		at.mu.Unlock()
 		return
 	}
 
 	at.running = false
+	at.mu.Unlock()
+
+	// 关闭stopChan通知所有goroutine立即退出
+	close(at.stopChan)
 
 	// 停止ARP数据包监听器
 	at.stopARPListener()
+
+	// 等待所有goroutine退出
+	at.wg.Wait()
 }
 
 // AddEntry 添加ARP条目
@@ -390,15 +404,27 @@ func (at *Table) GetStats() Stats {
 
 // cleanupLoop 清理循环
 func (at *Table) cleanupLoop() {
+	defer at.wg.Done()
+
 	ticker := time.NewTicker(at.cleanupInterval)
 	defer ticker.Stop()
 
-	for at.running {
+	for {
 		select {
+		case <-at.stopChan:
+			// 收到停止信号，立即退出
+			return
 		case <-ticker.C:
+			// 检查运行状态
+			at.mu.RLock()
+			running := at.running
+			at.mu.RUnlock()
+
+			if !running {
+				return
+			}
+
 			at.cleanupExpiredEntries()
-		default:
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
@@ -1127,6 +1153,7 @@ func htons(i uint16) uint16 {
 // startSystemARPMonitor 使用系统命令监听ARP变化
 func (at *Table) startSystemARPMonitor() error {
 	// 如果无法使用原始套接字，使用系统ARP表监控
+	at.wg.Add(1)
 	go at.systemARPMonitorLoop()
 	return nil
 }
@@ -1169,14 +1196,28 @@ func (at *Table) processRawPacket(data []byte) {
 
 // systemARPMonitorLoop 系统ARP表监控循环
 func (at *Table) systemARPMonitorLoop() {
+	defer at.wg.Done()
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	lastARPTable := make(map[string]string)
 
-	for at.running {
+	for {
 		select {
+		case <-at.stopChan:
+			// 收到停止信号，立即退出
+			return
 		case <-ticker.C:
+			// 检查运行状态
+			at.mu.RLock()
+			running := at.running
+			at.mu.RUnlock()
+
+			if !running {
+				return
+			}
+
 			currentARPTable := at.getSystemARPTable()
 
 			// 检查ARP表变化
@@ -1193,8 +1234,6 @@ func (at *Table) systemARPMonitorLoop() {
 			}
 
 			lastARPTable = currentARPTable
-		default:
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }

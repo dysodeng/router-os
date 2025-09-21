@@ -86,7 +86,7 @@ type Packet struct {
 type Processor struct {
 	// routingTable 路由表引用
 	// 用于查找数据包的转发路径
-	routingTable routing.RoutingTableInterface
+	routingTable routing.TableInterface
 
 	// interfaceManager 接口管理器引用
 	// 用于获取网络接口信息和状态
@@ -120,7 +120,7 @@ type Processor struct {
 }
 
 // NewProcessor 创建新的数据包处理器
-func NewProcessor(routingTable routing.RoutingTableInterface, interfaceManager *interfaces.Manager) *Processor {
+func NewProcessor(routingTable routing.TableInterface, interfaceManager *interfaces.Manager) *Processor {
 	return &Processor{
 		routingTable:     routingTable,
 		interfaceManager: interfaceManager,

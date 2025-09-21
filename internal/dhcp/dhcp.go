@@ -256,10 +256,16 @@ func (s *Server) Stop() {
 		return
 	}
 
+	fmt.Println("正在关闭 DHCP 服务器...")
 	s.running = false
+
 	if s.conn != nil {
+		// 设置读取超时，让阻塞的ReadFromUDP快速返回
+		_ = s.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		_ = s.conn.Close()
 	}
+
+	fmt.Println("DHCP 服务器已关闭")
 }
 
 // handleRequests handles incoming DHCP requests
@@ -271,6 +277,10 @@ func (s *Server) handleRequests() {
 		if err != nil {
 			if s.running {
 				fmt.Printf("Error reading UDP packet: %v\n", err)
+			}
+			// 如果服务器正在关闭，直接退出循环
+			if !s.running {
+				break
 			}
 			continue
 		}

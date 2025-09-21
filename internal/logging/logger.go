@@ -118,7 +118,9 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
 		return
 	}
 
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	// 使用中国时区格式化时间
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	timestamp := time.Now().In(loc).Format("2006-01-02 15:04:05 CST")
 	message := fmt.Sprintf(format, args...)
 	logLine := fmt.Sprintf("[%s] [%s] %s", timestamp, level.String(), message)
 

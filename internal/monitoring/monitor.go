@@ -28,7 +28,7 @@ type SystemStats struct {
 // Monitor 监控器
 type Monitor struct {
 	startTime        time.Time
-	routingTable     routing.RoutingTableInterface
+	routingTable     routing.TableInterface
 	interfaceManager *interfaces.Manager
 	stats            SystemStats
 	mu               sync.RWMutex
@@ -36,7 +36,7 @@ type Monitor struct {
 }
 
 // NewMonitor 创建监控器
-func NewMonitor(routingTable routing.RoutingTableInterface, interfaceManager *interfaces.Manager) *Monitor {
+func NewMonitor(routingTable routing.TableInterface, interfaceManager *interfaces.Manager) *Monitor {
 	return &Monitor{
 		startTime:        time.Now(),
 		routingTable:     routingTable,

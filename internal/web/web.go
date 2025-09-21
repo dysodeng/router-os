@@ -1,8 +1,10 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"router-os/internal/arp"
 	"router-os/internal/dhcp"
@@ -60,7 +62,7 @@ type RouterInstance struct {
 	InterfaceManager *interfaces.Manager
 
 	// RoutingTable 路由表
-	RoutingTable routing.RoutingTableInterface
+	RoutingTable routing.TableInterface
 
 	// ARPTable ARP表
 	ARPTable *arp.Table
@@ -116,7 +118,15 @@ func (ws *WebServer) Start() error {
 func (ws *WebServer) Stop() error {
 	ws.running = false
 	if ws.server != nil {
-		return ws.server.Close()
+		// 创建5秒超时的context用于优雅关闭
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// 尝试优雅关闭
+		if err := ws.server.Shutdown(ctx); err != nil {
+			// 如果优雅关闭失败，强制关闭
+			return ws.server.Close()
+		}
 	}
 	return nil
 }

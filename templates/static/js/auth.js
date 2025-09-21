@@ -14,6 +14,11 @@ class AuthManager {
         return true;
     }
 
+    // 检查是否已认证（不跳转）
+    isAuthenticated() {
+        return !!this.token;
+    }
+
     // 跳转到登录页面
     redirectToLogin() {
         window.location.href = '/login';
