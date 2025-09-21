@@ -5,25 +5,27 @@
 ## 特性
 
 ### 核心功能
-- **高性能路由表**: 基于Trie树的快速路由查找
-- **多协议支持**: RIP, OSPF, BGP, IS-IS等动态路由协议
+- **高性能路由表**: 基于Trie树的快速路由查找，支持IPv4/IPv6
+- **多协议支持**: RIP, OSPF, BGP, IS-IS等动态路由协议实现
 - **数据包转发**: 高效的数据包处理和转发引擎
-- **网络接口管理**: 自动发现和管理网络接口
+- **网络接口管理**: 自动发现和管理网络接口，支持状态监控
 - **ARP表管理**: 自动ARP学习和老化机制
 
 ### 高级功能
 - **负载均衡**: 支持多种负载均衡算法
 - **故障转移**: 自动路径故障检测和切换
-- **防火墙**: 基于规则的数据包过滤
+- **防火墙**: 基于规则的数据包过滤和安全策略
 - **QoS流量控制**: 带宽限制和流量整形
-- **DHCP服务器**: 动态IP地址分配
-- **VPN支持**: OpenVPN、WireGuard、IPSec协议
+- **DHCP服务器**: 动态IP地址分配和租约管理
+- **VPN支持**: VPN服务器功能
+- **NAT转换**: 网络地址转换和端口映射
 
 ### 管理功能
-- **Web管理界面**: 现代化的Web UI管理
-- **CLI管理**: 功能丰富的命令行界面
-- **配置管理**: 灵活的配置文件支持
-- **性能监控**: 实时性能指标收集和分析
+- **Web管理界面**: 现代化的Web UI管理，支持认证和实时监控
+- **CLI管理**: 功能丰富的命令行界面，支持交互式操作
+- **配置管理**: 灵活的JSON配置文件支持
+- **性能监控**: 实时性能指标收集、数据包捕获和流量分析
+- **数据包捕获**: 网络接口数据包监控和分析
 
 ## 快速开始
 
@@ -81,13 +83,38 @@ sudo ./router-os -port 8080 -host 0.0.0.0
   },
   "dhcp": {
     "enabled": true,
+    "interface": "eth0",
     "start_ip": "192.168.1.100",
     "end_ip": "192.168.1.200",
-    "gateway": "192.168.1.1"
+    "gateway": "192.168.1.1",
+    "dns_servers": ["8.8.8.8", "8.8.4.4"],
+    "lease_time": 86400
+  },
+  "vpn": {
+    "enabled": false,
+    "port": 1194,
+    "protocol": "udp",
+    "subnet": "10.8.0.0/24"
   },
   "firewall": {
     "enabled": true,
     "default_policy": "DROP"
+  },
+  "qos": {
+    "enabled": false,
+    "default_bandwidth": 100
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/router-os.log"
+  },
+  "database": {
+    "driver": "sqlite3",
+    "dsn": "./router.db",
+    "max_idle_conns": 10,
+    "max_open_conns": 100,
+    "conn_max_lifetime": 3600,
+    "conn_max_idle_time": 1800
   }
 }
 ```
@@ -97,26 +124,39 @@ sudo ./router-os -port 8080 -host 0.0.0.0
 Router OS采用模块化设计，主要组件包括：
 
 ### 核心模块
-- **路由表模块** (`internal/routing`): 管理路由信息和查找
-- **转发引擎** (`internal/forwarding`): 处理数据包转发逻辑
-- **接口管理** (`internal/interfaces`): 网络接口的配置和监控
-- **ARP管理** (`internal/arp`): ARP表维护和解析
+- **路由表模块** (`internal/module/routing`): 管理路由信息和查找，支持IPv4/IPv6
+- **转发引擎** (`internal/module/forwarding`): 处理数据包转发逻辑
+- **接口管理** (`internal/module/interfaces`): 网络接口的配置和监控
+- **ARP管理** (`internal/module/arp`): ARP表维护和解析
+- **数据包处理** (`internal/module/packet`): 数据包解析和处理
 
 ### 网络服务
-- **DHCP服务器** (`internal/dhcp`): 动态IP地址分配
-- **防火墙** (`internal/firewall`): 数据包过滤和安全
-- **QoS引擎** (`internal/qos`): 流量控制和带宽管理
-- **VPN服务** (`internal/vpn`): 虚拟专用网络
+- **DHCP服务器** (`internal/module/dhcp`): 动态IP地址分配和租约管理
+- **防火墙** (`internal/module/firewall`): 数据包过滤和安全策略
+- **QoS引擎** (`internal/module/qos`): 流量控制和带宽管理
+- **VPN服务** (`internal/module/vpn`): 虚拟专用网络服务
+- **NAT模块** (`internal/module/nat`): 网络地址转换
+
+### 监控和分析
+- **数据包捕获** (`internal/module/capture`): 网络数据包捕获和分析
+- **性能监控** (`internal/module/monitoring`): 系统性能指标收集
+- **流量分析** (`internal/module/capture`): 实时流量统计和异常检测
 
 ### 管理界面
-- **Web界面** (`internal/web`): HTTP管理接口
-- **CLI系统** (`internal/cli`): 命令行管理界面
+- **Web界面** (`internal/web`): HTTP管理接口，包含完整的前端界面
+- **CLI系统** (`internal/module/cli`): 命令行管理界面，支持交互式操作
+- **认证系统** (`internal/web/auth`): 用户认证和权限管理
 
 ### 协议支持
-- **静态路由** (`internal/protocols/static`)
-- **RIP协议** (`internal/protocols/rip`)
-- **OSPF协议** (`internal/protocols/ospf`)
-- **BGP协议** (`internal/protocols/bgp`)
+- **静态路由** (`internal/module/protocols/static`)
+- **RIP协议** (`internal/module/protocols/rip`): RIPv2协议实现
+- **OSPF协议** (`internal/module/protocols/ospf`): OSPF邻居发现和维护
+- **BGP协议** (`internal/module/protocols/bgp`): BGP-4协议实现
+- **IS-IS协议** (`internal/module/protocols/isis`): IS-IS协议支持
+
+### 数据存储
+- **数据库模块** (`internal/database`): SQLite数据库支持，用于持久化配置和状态
+- **配置管理** (`internal/config`): JSON配置文件管理
 
 ## 使用示例
 
@@ -124,33 +164,72 @@ Router OS采用模块化设计，主要组件包括：
 
 ```bash
 # 添加静态路由
-curl -X POST http://localhost:8080/api/routes \
+curl -X POST http://localhost:8080/api/routes/add \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
   -d '{"destination": "192.168.2.0/24", "gateway": "192.168.1.1", "interface": "eth0"}'
 
 # 查看路由表
-curl http://localhost:8080/api/routes
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/routes
 ```
 
 ### 防火墙规则
 
 ```bash
+# 查看防火墙规则
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/firewall/rules
+
 # 添加防火墙规则
-curl -X POST http://localhost:8080/api/firewall \
+curl -X POST http://localhost:8080/api/firewall/rules/add \
   -H "Content-Type: application/json" \
-  -d '{"action": "ACCEPT", "source": "192.168.1.0/24", "destination": "any", "port": 80}'
+  -H "Authorization: Bearer <token>" \
+  -d '{"action": "ACCEPT", "protocol": "tcp", "source": "192.168.1.0/24", "destination": "any", "port": 80}'
 ```
 
 ### 接口管理
 
 ```bash
 # 查看网络接口
-curl http://localhost:8080/api/interfaces
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/interfaces
 
-# 配置接口IP
-curl -X POST http://localhost:8080/api/interfaces \
+# 查看接口统计信息
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/interfaces/stats
+```
+
+### DHCP管理
+
+```bash
+# 查看DHCP租约
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/dhcp/leases
+
+# 查看DHCP配置
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/dhcp/config
+```
+
+### 系统监控
+
+```bash
+# 查看系统状态
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/monitor/system
+
+# 查看网络统计
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/monitor/network
+
+# 查看防火墙统计
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/monitor/firewall
+```
+
+### 用户认证
+
+```bash
+# 登录获取token
+curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"name": "eth0", "ip": "192.168.1.1", "mask": "255.255.255.0"}'
+  -d '{"username": "admin", "password": "admin123"}'
+
+# 验证token
+curl -X POST http://localhost:8080/api/auth/verify \
+  -H "Authorization: Bearer <token>"
 ```
 
 ## 部署
@@ -191,16 +270,42 @@ docker run -d --name router-os \
 router-os/
 ├── cmd/router/          # 主程序入口
 ├── internal/            # 内部模块
-│   ├── arp/            # ARP表管理
-│   ├── dhcp/           # DHCP服务器
-│   ├── firewall/       # 防火墙
-│   ├── forwarding/     # 数据包转发
-│   ├── interfaces/     # 接口管理
-│   ├── protocols/      # 路由协议
-│   ├── qos/           # QoS流量控制
-│   ├── routing/       # 路由表
-│   ├── vpn/           # VPN服务
-│   └── web/           # Web管理界面
+│   ├── config/         # 配置管理
+│   ├── database/       # 数据库模块
+│   ├── module/         # 核心功能模块
+│   │   ├── arp/        # ARP表管理
+│   │   ├── capture/    # 数据包捕获
+│   │   ├── cli/        # CLI命令行界面
+│   │   ├── dhcp/       # DHCP服务器
+│   │   ├── firewall/   # 防火墙
+│   │   ├── forwarding/ # 数据包转发
+│   │   ├── interfaces/ # 接口管理
+│   │   ├── monitoring/ # 性能监控
+│   │   ├── nat/        # NAT转换
+│   │   ├── packet/     # 数据包处理
+│   │   ├── protocols/  # 路由协议
+│   │   │   ├── bgp/    # BGP协议
+│   │   │   ├── isis/   # IS-IS协议
+│   │   │   ├── ospf/   # OSPF协议
+│   │   │   ├── rip/    # RIP协议
+│   │   │   └── static/ # 静态路由
+│   │   ├── qos/        # QoS流量控制
+│   │   ├── routing/    # 路由表
+│   │   └── vpn/        # VPN服务
+│   └── web/            # Web管理界面
+│       ├── auth/       # 认证中间件
+│       ├── handlers/   # HTTP处理器
+│       └── templates/  # 模板引擎
+├── templates/          # HTML模板文件
+│   ├── static/         # 静态资源
+│   ├── dashboard/      # 仪表板页面
+│   ├── interfaces/     # 接口管理页面
+│   ├── routes/         # 路由管理页面
+│   ├── firewall/       # 防火墙页面
+│   ├── dhcp/          # DHCP页面
+│   ├── vpn/           # VPN页面
+│   ├── qos/           # QoS页面
+│   └── monitor/       # 监控页面
 ├── docs/              # 文档
 ├── examples/          # 示例代码
 └── deploy/           # 部署脚本
