@@ -1448,11 +1448,6 @@ func (at *Table) loadInitialSystemARPTable() {
 	// 获取当前系统ARP表
 	systemARPTable := at.getSystemARPTable()
 
-	fmt.Printf("DEBUG: 系统ARP表条目数量: %d\n", len(systemARPTable))
-	for ip, mac := range systemARPTable {
-		fmt.Printf("DEBUG: 发现系统ARP条目: %s -> %s\n", ip, mac)
-	}
-
 	// 将系统ARP条目添加到内部表中
 	for ip, mac := range systemARPTable {
 		if parsedIP := net.ParseIP(ip); parsedIP != nil {

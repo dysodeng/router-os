@@ -503,7 +503,7 @@ body {
 
 .dhcp-table th:nth-child(7),
 .dhcp-table td:nth-child(7) {
-    width: 160px; /* 操作 */
+    width: 120px; /* 操作 */
 }
 
 /* 加载状态样式 */
