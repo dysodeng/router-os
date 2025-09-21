@@ -14,6 +14,7 @@ import (
 
 	"router-os/internal/arp"
 	"router-os/internal/config"
+	"router-os/internal/database"
 	"router-os/internal/dhcp"
 	"router-os/internal/firewall"
 	"router-os/internal/forwarding"
@@ -61,6 +62,35 @@ func main() {
 		log.Fatalf("加载配置文件失败: %v", err)
 	}
 	log.Printf("配置加载成功 - DHCP启用: %v, VPN启用: %v", appConfig.DHCP.Enabled, appConfig.VPN.Enabled)
+
+	// 初始化数据库连接
+	log.Println("初始化数据库连接...")
+	dbConfig, err := appConfig.Database.ToDBConfig()
+	if err != nil {
+		log.Fatalf("转换数据库配置失败: %v", err)
+	}
+
+	// 创建数据库连接
+	db, err := database.CreateDatabase(dbConfig)
+	if err != nil {
+		log.Fatalf("创建数据库连接失败: %v", err)
+	}
+
+	// 连接数据库
+	ctx := context.Background()
+	if err = db.Connect(ctx); err != nil {
+		log.Fatalf("连接数据库失败: %v", err)
+	}
+	log.Printf("数据库连接成功 - 类型: %s", dbConfig.Type)
+
+	// 确保程序退出时关闭数据库连接
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("关闭数据库连接失败: %v", err)
+		} else {
+			log.Println("数据库连接已关闭")
+		}
+	}()
 
 	// 初始化各个模块
 	log.Println("初始化网络接口管理器...")

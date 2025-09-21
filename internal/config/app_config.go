@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"router-os/internal/database"
 )
 
 // WebConfig Web服务配置
@@ -57,6 +59,23 @@ type LoggingConfig struct {
 	File  string `json:"file"`
 }
 
+// DatabaseConfig 数据库配置
+type DatabaseConfig struct {
+	Type            string `json:"type"`               // 数据库类型: sqlite, mysql, postgres
+	Host            string `json:"host"`               // 主机地址
+	Port            int    `json:"port"`               // 端口
+	Database        string `json:"database"`           // 数据库名称
+	Username        string `json:"username"`           // 用户名
+	Password        string `json:"password"`           // 密码
+	SSLMode         string `json:"ssl_mode"`           // SSL模式
+	Charset         string `json:"charset"`            // 字符集
+	MaxOpenConns    int    `json:"max_open_conns"`     // 最大打开连接数
+	MaxIdleConns    int    `json:"max_idle_conns"`     // 最大空闲连接数
+	ConnMaxLifetime string `json:"conn_max_lifetime"`  // 连接最大生存时间
+	ConnMaxIdleTime string `json:"conn_max_idle_time"` // 连接最大空闲时间
+	FilePath        string `json:"file_path"`          // SQLite文件路径
+}
+
 // AppConfig 应用配置
 type AppConfig struct {
 	Web      WebConfig      `json:"web"`
@@ -65,6 +84,7 @@ type AppConfig struct {
 	Firewall FirewallConfig `json:"firewall"`
 	QoS      QoSConfig      `json:"qos"`
 	Logging  LoggingConfig  `json:"logging"`
+	Database DatabaseConfig `json:"database"`
 }
 
 // LoadAppConfig 加载应用配置
@@ -128,6 +148,21 @@ func getDefaultAppConfig() *AppConfig {
 			Level: "info",
 			File:  "/var/log/router-os.log",
 		},
+		Database: DatabaseConfig{
+			Type:            "sqlite",
+			Host:            "",
+			Port:            0,
+			Database:        "router-os.db",
+			Username:        "",
+			Password:        "",
+			SSLMode:         "disable",
+			Charset:         "utf8",
+			MaxOpenConns:    10,
+			MaxIdleConns:    5,
+			ConnMaxLifetime: "1h",
+			ConnMaxIdleTime: "30m",
+			FilePath:        "./data/router-os.db",
+		},
 	}
 }
 
@@ -145,7 +180,38 @@ func SaveAppConfig(config *AppConfig, configFile string) error {
 	return nil
 }
 
-// ConvertDHCPConfigToDuration 将DHCP配置中的租约时间转换为Duration
+// GetLeaseTimeDuration 获取租约时间的Duration
 func (c *DHCPConfig) GetLeaseTimeDuration() time.Duration {
 	return time.Duration(c.LeaseTime) * time.Second
+}
+
+// ToDBConfig 将DatabaseConfig转换为database.Config
+func (c *DatabaseConfig) ToDBConfig() (*database.Config, error) {
+	// 解析连接生存时间
+	connMaxLifetime, err := time.ParseDuration(c.ConnMaxLifetime)
+	if err != nil {
+		connMaxLifetime = time.Hour // 默认1小时
+	}
+
+	// 解析连接空闲时间
+	connMaxIdleTime, err := time.ParseDuration(c.ConnMaxIdleTime)
+	if err != nil {
+		connMaxIdleTime = 30 * time.Minute // 默认30分钟
+	}
+
+	return &database.Config{
+		Type:            c.Type,
+		Host:            c.Host,
+		Port:            c.Port,
+		Database:        c.Database,
+		Username:        c.Username,
+		Password:        c.Password,
+		SSLMode:         c.SSLMode,
+		Charset:         c.Charset,
+		MaxOpenConns:    c.MaxOpenConns,
+		MaxIdleConns:    c.MaxIdleConns,
+		ConnMaxLifetime: connMaxLifetime,
+		ConnMaxIdleTime: connMaxIdleTime,
+		FilePath:        c.FilePath,
+	}, nil
 }

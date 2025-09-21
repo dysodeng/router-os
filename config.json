@@ -36,5 +36,20 @@
   "logging": {
     "level": "info",
     "file": "/var/log/router-os.log"
+  },
+  "database": {
+    "type": "sqlite",
+    "host": "",
+    "port": 0,
+    "database": "router-os.db",
+    "username": "",
+    "password": "",
+    "ssl_mode": "disable",
+    "charset": "utf8",
+    "max_open_conns": 10,
+    "max_idle_conns": 5,
+    "conn_max_lifetime": "1h",
+    "conn_max_idle_time": "30m",
+    "file_path": "./data/router-os.db"
   }
 }

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # commit-msg hook
-commit_regex='^(feat|fix|hotfix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{8,50}'
+commit_regex='^(feat|fix|hotfix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{6,50}'
 
 # 检查基本格式
 if ! grep -qE "$commit_regex" "$1"; then
     printf "\033[31m Invalid commit message format! \033[0m\n"
     printf "\033[31m Format: <type>(<scope>): <subject> \033[0m\n"
-    printf "\033[31m Subject must be 8-50 characters long \033[0m\n"
+    printf "\033[31m Subject must be 6-50 characters long \033[0m\n"
     exit 1
 fi
 
