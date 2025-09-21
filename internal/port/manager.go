@@ -40,22 +40,6 @@ func fromDAOPortConfig(config *dao.PortConfig) *PortConfig {
 	}
 }
 
-// toDAONetworkTopology 将 port.NetworkTopology 转换为 dao.NetworkTopology
-func toDAONetworkTopology(topology *NetworkTopology) *dao.NetworkTopology {
-	return &dao.NetworkTopology{
-		NATEnabled:          topology.NATEnabled,
-		IPForwardingEnabled: topology.IPForwardingEnabled,
-	}
-}
-
-// fromDAONetworkTopology 将 dao.NetworkTopology 转换为 port.NetworkTopology
-func fromDAONetworkTopology(topology *dao.NetworkTopology) *NetworkTopology {
-	return &NetworkTopology{
-		NATEnabled:          topology.NATEnabled,
-		IPForwardingEnabled: topology.IPForwardingEnabled,
-	}
-}
-
 // Manager 端口管理器
 // 负责网络接口的角色分配、NAT规则管理和路由配置
 // 这是路由器核心功能的管理组件
