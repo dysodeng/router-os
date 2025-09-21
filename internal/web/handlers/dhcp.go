@@ -69,7 +69,7 @@ func (h *DHCPHandler) HandleDHCPConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(config)
+		_ = json.NewEncoder(w).Encode(config)
 
 	case "POST":
 		// Update DHCP configuration
@@ -129,7 +129,7 @@ func (h *DHCPHandler) HandleDHCPConfig(w http.ResponseWriter, r *http.Request) {
 		h.router.DHCP.SetConfig(config)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	}
 }
 
@@ -175,5 +175,5 @@ func (h *DHCPHandler) HandleDHCPLeases(w http.ResponseWriter, r *http.Request) {
 		"leases": leases,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

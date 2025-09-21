@@ -23,7 +23,7 @@ func NewMonitorHandler(router *RouterInstance) *MonitorHandler {
 func (h *MonitorHandler) ShowMonitor(w http.ResponseWriter, r *http.Request) {
 	// 这里应该使用模板渲染器，暂时返回简单响应
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte("<h1>系统监控</h1><p>监控页面正在开发中...</p>"))
+	_, _ = w.Write([]byte("<h1>系统监控</h1><p>监控页面正在开发中...</p>"))
 }
 
 // HandleSystemStats 处理系统统计信息API
