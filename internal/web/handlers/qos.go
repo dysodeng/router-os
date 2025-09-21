@@ -43,7 +43,7 @@ func (h *QoSHandler) HandleQoSConfig(w http.ResponseWriter, r *http.Request) {
 		"rules":   []interface{}{},
 	}
 
-	json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(config)
 }
 
 // HandleQoSRules 处理QoS规则
@@ -53,15 +53,15 @@ func (h *QoSHandler) HandleQoSRules(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		// 获取QoS规则列表
-		rules := []interface{}{}
-		json.NewEncoder(w).Encode(rules)
+		var rules []interface{}
+		_ = json.NewEncoder(w).Encode(rules)
 	case "POST":
 		// 添加QoS规则
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	case "DELETE":
 		// 删除QoS规则
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	default:
 		http.Error(w, "方法不允许", http.StatusMethodNotAllowed)
 	}
