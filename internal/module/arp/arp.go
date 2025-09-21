@@ -1375,7 +1375,7 @@ func (at *Table) systemARPMonitorLoop() {
 func (at *Table) getSystemARPTable() map[string]string {
 	arpTable := make(map[string]string)
 
-	// 使用arp命令获取系统ARP表
+	// 执行arp命令获取系统ARP表
 	cmd := exec.Command("arp", "-a")
 	output, err := cmd.Output()
 	if err != nil {
@@ -1385,17 +1385,49 @@ func (at *Table) getSystemARPTable() map[string]string {
 	// 解析arp命令输出
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
-		if strings.Contains(line, "at") && strings.Contains(line, ":") {
-			// 解析格式: hostname (ip) at mac [ether] on interface
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// 解析格式: ? (ip) at <incomplete> on interface
+		// 或者: ? (ip) at mac [ether] on interface
+		// 或者: hostname (ip) at mac [ether] on interface
+		if strings.Contains(line, "at") && strings.Contains(line, "on") {
 			parts := strings.Fields(line)
+			var ip, mac, iface string
+
+			// 查找IP地址（在括号中）
 			for i, part := range parts {
 				if strings.HasPrefix(part, "(") && strings.HasSuffix(part, ")") {
-					ip := strings.Trim(part, "()")
-					if i+2 < len(parts) && strings.Contains(parts[i+2], ":") {
-						mac := parts[i+2]
-						arpTable[ip] = mac
+					ip = strings.Trim(part, "()")
+
+					// 查找"at"关键字的位置
+					for j := i + 1; j < len(parts); j++ {
+						if parts[j] == "at" && j+1 < len(parts) {
+							mac = parts[j+1]
+
+							// 查找"on"关键字的位置
+							for k := j + 2; k < len(parts); k++ {
+								if parts[k] == "on" && k+1 < len(parts) {
+									iface = parts[k+1]
+									break
+								}
+							}
+							break
+						}
 					}
 					break
+				}
+			}
+
+			if ip != "" {
+				if mac == "<incomplete>" {
+					// 对于incomplete条目，使用特殊标记
+					arpTable[ip] = "incomplete:" + iface
+				} else if mac != "" && strings.Contains(mac, ":") {
+					// 对于完整条目，记录MAC地址和接口
+					arpTable[ip] = mac + ":" + iface
 				}
 			}
 		}
@@ -1449,21 +1481,42 @@ func (at *Table) loadInitialSystemARPTable() {
 	systemARPTable := at.getSystemARPTable()
 
 	// 将系统ARP条目添加到内部表中
-	for ip, mac := range systemARPTable {
+	for ip, macInfo := range systemARPTable {
 		if parsedIP := net.ParseIP(ip); parsedIP != nil {
-			if parsedMAC, err := net.ParseMAC(mac); err == nil {
-				// 添加到ARP表，使用空接口名（系统ARP表通常不包含接口信息）
-				err := at.HandleARPReply(parsedIP, parsedMAC, "")
-				if err != nil {
-					fmt.Printf("DEBUG: 添加ARP条目失败: %s -> %s, 错误: %v\n", ip, mac, err)
-				} else {
-					fmt.Printf("DEBUG: 成功添加ARP条目: %s -> %s\n", ip, mac)
+			// 解析MAC地址和接口信息
+			parts := strings.Split(macInfo, ":")
+			if len(parts) >= 2 {
+				macStr := parts[0]
+				iface := strings.Join(parts[1:], ":")
+
+				if macStr == "incomplete" {
+					// 处理incomplete条目
+					// 创建incomplete状态的ARP条目
+					entry := &Entry{
+						IPAddress:    parsedIP,
+						MACAddress:   nil, // incomplete条目没有MAC地址
+						Interface:    iface,
+						State:        StateIncomplete,
+						Timestamp:    time.Now(),
+						TTL:          at.defaultTTL,
+						RetryCount:   0,
+						LastAccessed: time.Now(),
+						CreatedAt:    time.Now(),
+						UpdatedAt:    time.Now(),
+					}
+
+					// 直接添加到entries映射中
+					at.mu.Lock()
+					key := parsedIP.String()
+					at.entries[key] = entry
+					at.stats.TotalEntries++
+					at.stats.EntriesAdded++
+					at.mu.Unlock()
+				} else if parsedMAC, err := net.ParseMAC(macStr); err == nil {
+					// 处理完整的ARP条目
+					at.HandleARPReply(parsedIP, parsedMAC, iface)
 				}
-			} else {
-				fmt.Printf("DEBUG: 解析MAC地址失败: %s, 错误: %v\n", mac, err)
 			}
-		} else {
-			fmt.Printf("DEBUG: 解析IP地址失败: %s\n", ip)
 		}
 	}
 }

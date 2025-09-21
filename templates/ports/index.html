@@ -2,7 +2,18 @@
 <div class="container">
     {{template "header" .}}
     
-    <div class="main-content">
+    <!-- 认证检查提示 -->
+    <div id="auth-check" style="display: block; text-align: center; padding: 20px;">
+        <p>正在验证身份...</p>
+    </div>
+    
+    <!-- 未认证提示 -->
+    <div id="unauthorized" style="display: none; text-align: center; padding: 20px; color: red;">
+        <p>未登录或登录已过期，正在跳转到登录页面...</p>
+    </div>
+    
+    <!-- 页面内容 -->
+    <div id="page-content" class="content" style="display: none;">
         <div class="page-header">
             <h1>端口管理</h1>
             <p>配置网络接口的角色分配（WAN/LAN）</p>
@@ -144,35 +155,17 @@
                 </form>
             </div>
         </div>
-    </div>
 
-    <!-- 加载指示器 -->
-    <div id="loading" class="loading-overlay" style="display: none;">
-        <div class="loading-spinner"></div>
-        <p>正在加载端口信息...</p>
+        <!-- 加载指示器 -->
+        <div id="loading" class="loading-overlay" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>正在加载端口信息...</p>
+        </div>
     </div>
 </div>
 
 <style>
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
-}
 
-.page-header {
-    margin-bottom: 30px;
-}
-
-.page-header h1 {
-    color: #333;
-    margin-bottom: 10px;
-}
-
-.page-header p {
-    color: #666;
-    font-size: 16px;
-}
 
 .topology-overview {
     margin-bottom: 30px;
@@ -340,35 +333,7 @@
     gap: 10px;
 }
 
-.btn {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.3s ease;
-}
 
-.btn-primary {
-    background: #3498db;
-    color: white;
-}
-
-.btn-primary:hover {
-    background: #2980b9;
-}
-
-.btn-secondary {
-    background: #95a5a6;
-    color: white;
-}
-
-.btn-secondary:hover {
-    background: #7f8c8d;
-}
 
 .table-container {
     background: #fff;
@@ -470,25 +435,7 @@
     padding: 20px;
 }
 
-.form-group {
-    margin-bottom: 20px;
-}
 
-.form-group label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-    color: #333;
-}
-
-.form-group input,
-.form-group select {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-}
 
 .form-actions {
     display: flex;
@@ -550,5 +497,6 @@
 {{end}}
 
 {{define "scripts"}}
+<script src="/static/js/auth.js"></script>
 <script src="/static/js/ports.js"></script>
 {{end}}

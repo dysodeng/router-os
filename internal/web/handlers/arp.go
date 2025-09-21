@@ -59,9 +59,17 @@ func (h *ARPHandler) HandleARPList(w http.ResponseWriter, r *http.Request) {
 			statusStr = "unknown"
 		}
 
+		// 处理MAC地址，对于incomplete条目可能为nil
+		var macStr string
+		if entry.MACAddress != nil {
+			macStr = entry.MACAddress.String()
+		} else {
+			macStr = "<incomplete>"
+		}
+
 		arpEntry := map[string]interface{}{
 			"ip":           entry.IPAddress.String(),
-			"mac":          entry.MACAddress.String(),
+			"mac":          macStr,
 			"interface":    entry.Interface,
 			"status":       statusStr,
 			"ttl":          entry.TTL.Seconds(),

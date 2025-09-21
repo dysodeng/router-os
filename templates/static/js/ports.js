@@ -3,11 +3,17 @@ class PortManager {
     constructor() {
         this.ports = [];
         this.draggedPort = null;
+        this.authManager = window.authManager;
         this.init();
     }
 
-    init() {
-        this.loadPorts();
+    async init() {
+        // 等待认证完成
+        if (!this.authManager || !this.authManager.isAuthenticated()) {
+            return;
+        }
+        
+        await this.loadPorts();
         this.setupDragAndDrop();
         this.setupEventListeners();
     }
@@ -27,7 +33,7 @@ class PortManager {
     async loadPorts() {
         try {
             this.showLoading(true);
-            const response = await apiRequest('/api/ports');
+            const response = await this.authManager.fetchWithAuth('/api/ports');
             if (!response || !response.ok) {
                 throw new Error('Failed to load ports');
             }
@@ -257,7 +263,7 @@ class PortManager {
 
     // 更新端口角色
     async updatePortRole(portName, role) {
-        const response = await apiRequest('/api/ports/role', {
+        const response = await this.authManager.fetchWithAuth('/api/ports/role', {
             method: 'POST',
             body: JSON.stringify({
                 interface_name: portName,
@@ -467,8 +473,12 @@ function closeModal() {
 
 // 初始化端口管理器
 let portManager;
-document.addEventListener('DOMContentLoaded', () => {
-    portManager = new PortManager();
+document.addEventListener('DOMContentLoaded', async () => {
+    // 等待认证管理器初始化完成
+    if (window.authManager) {
+        await window.authManager.initPageAuth();
+        portManager = new PortManager();
+    }
 });
 
 // 添加CSS样式
