@@ -1514,7 +1514,7 @@ func (at *Table) loadInitialSystemARPTable() {
 					at.mu.Unlock()
 				} else if parsedMAC, err := net.ParseMAC(macStr); err == nil {
 					// 处理完整的ARP条目
-					at.HandleARPReply(parsedIP, parsedMAC, iface)
+					_ = at.HandleARPReply(parsedIP, parsedMAC, iface)
 				}
 			}
 		}
