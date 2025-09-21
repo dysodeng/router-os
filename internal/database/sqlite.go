@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -31,7 +32,10 @@ func NewSQLiteDatabase(config *Config) (Database, error) {
 	// 确保目录存在
 	dir := filepath.Dir(config.FilePath)
 	if dir != "." && dir != "" {
-		// 这里可以添加目录创建逻辑，但为了简化暂时跳过
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &SQLiteDatabase{

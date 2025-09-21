@@ -189,7 +189,7 @@ func (dao *BaseDAOImpl[T]) WithTransaction(ctx context.Context, fn func(tx datab
 
 	defer func() {
 		if r := recover(); r != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			panic(r)
 		}
 	}()
